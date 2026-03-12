@@ -51,7 +51,8 @@ services:
       HOST: "0.0.0.0"
       NODE_ENV: development
       DATABASE_URL: postgresql://paperclip:${POSTGRES_PASSWORD:-paperclip-local}@postgres:5432/paperclip_platform
-      CADDY_ADMIN_URL: http://caddy:2019
+      # CADDY_ADMIN_URL intentionally omitted — .env.local sets it empty to
+      # prevent ProxyManager /load calls from overwriting the Caddyfile wildcard.
       BETTER_AUTH_URL: http://localhost:3200
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
