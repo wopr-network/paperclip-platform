@@ -1,0 +1,75 @@
+##
+## Local development environment for paperclip-platform.
+##
+## Usage:
+##   cp .env.example .env        # fill in required values
+##   docker compose up --build   # platform + one seed Paperclip instance
+##
+## The platform can spin up additional Paperclip containers at runtime
+## via POST /api/provision/create — they join the "paperclip" bridge
+## network automatically and are reachable by container hostname.
+##
+
+services:
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3200:3200"
+    environment:
+      PORT: "3200"
+      HOST: "0.0.0.0"
+      NODE_ENV: development
+      PROVISION_SECRET: ${PROVISION_SECRET}
+      GATEWAY_URL: ${GATEWAY_URL}
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-localhost}
+      UI_ORIGIN: ${UI_ORIGIN:-http://localhost:3200}
+      PAPERCLIP_IMAGE: ${PAPERCLIP_IMAGE:-ghcr.io/wopr-network/paperclip:managed}
+      PAPERCLIP_CONTAINER_PORT: "3100"
+      FLEET_DATA_DIR: /data/fleet
+    volumes:
+      # Docker socket — FleetManager creates sibling containers
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persist fleet profile data across restarts
+      - fleet-data:/data/fleet
+    networks:
+      - paperclip
+    depends_on:
+      seed:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3200/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  seed:
+    image: ${PAPERCLIP_IMAGE:-ghcr.io/wopr-network/paperclip:managed}
+    container_name: wopr-seed
+    environment:
+      PORT: "3100"
+      HOST: "0.0.0.0"
+      NODE_ENV: production
+      WOPR_PROVISION_SECRET: ${PROVISION_SECRET}
+      WOPR_GATEWAY_URL: ${GATEWAY_URL}
+      PAPERCLIP_DEPLOYMENT_MODE: local_trusted
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+    networks:
+      - paperclip
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3100/internal/provision/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  paperclip:
+    name: paperclip
+    driver: bridge
+
+volumes:
+  fleet-data:
