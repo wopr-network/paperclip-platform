@@ -103,7 +103,7 @@ provisionWebhookRoutes.post("/create", async (c) => {
     } catch (err) {
       logger.warn("Cleanup after unhealthy container failed", { err });
     }
-    removeRoute(profile.id);
+    await removeRoute(profile.id);
     return c.json({ error: "Container failed health check" }, 503);
   }
 
@@ -178,7 +178,7 @@ provisionWebhookRoutes.post("/destroy", async (c) => {
   }
 
   // Remove from proxy route table
-  removeRoute(instanceId);
+  await removeRoute(instanceId);
 
   logger.info(`Destroyed Paperclip instance: ${instanceId}`);
   return c.json({ ok: true });

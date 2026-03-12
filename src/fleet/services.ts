@@ -73,7 +73,10 @@ export function getFleetManager(): FleetManager {
 export function getProxyManager(): ProxyManager {
   if (!_proxy) {
     const config = getConfig();
-    _proxy = new ProxyManager({ domain: config.PLATFORM_DOMAIN });
+    _proxy = new ProxyManager({
+      domain: config.PLATFORM_DOMAIN,
+      caddyAdminUrl: config.CADDY_ADMIN_URL,
+    });
   }
   return _proxy;
 }

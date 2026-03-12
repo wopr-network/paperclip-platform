@@ -8,6 +8,18 @@
 
 import type { ProxyRoute } from "@wopr-network/platform-core/proxy/types";
 import { getProxyManager } from "../fleet/services.js";
+import { logger } from "../log.js";
+
+/** Push route table to Caddy. Logs but does not throw on failure. */
+async function syncToCaddy(): Promise<void> {
+  const proxy = getProxyManager();
+  if (!proxy.isRunning) return;
+  try {
+    await proxy.reload();
+  } catch (err) {
+    logger.warn("Caddy sync failed", { error: (err as Error).message });
+  }
+}
 
 /**
  * Register a fleet container route for a tenant subdomain.
@@ -26,11 +38,13 @@ export async function registerRoute(
     upstreamPort,
     healthy: true,
   });
+  await syncToCaddy();
 }
 
 /** Remove a fleet container route. */
-export function removeRoute(instanceId: string): void {
+export async function removeRoute(instanceId: string): Promise<void> {
   getProxyManager().removeRoute(instanceId);
+  await syncToCaddy();
 }
 
 /** Mark a container as healthy or unhealthy. */

@@ -15,6 +15,10 @@ vi.mock("../fleet/services.js", () => ({
   getProxyManager: () => mockProxyManager,
 }));
 
+vi.mock("../log.js", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
 // Stub env before importing modules that read config
 vi.stubEnv("PROVISION_SECRET", "test-secret");
 vi.stubEnv("GATEWAY_URL", "https://gateway.test/v1");
@@ -62,8 +66,8 @@ describe("fleet-resolver (ProxyManager-backed)", () => {
     expect(resolveContainerUrl("bob")).toBeNull();
   });
 
-  it("removes routes via ProxyManager.removeRoute", () => {
-    removeRoute("inst-1");
+  it("removes routes via ProxyManager.removeRoute", async () => {
+    await removeRoute("inst-1");
     expect(mockProxyManager.removeRoute).toHaveBeenCalledWith("inst-1");
   });
 

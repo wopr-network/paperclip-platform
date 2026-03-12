@@ -53,6 +53,12 @@ const envSchema = z.object({
 
   /** API key for admin access (automation/monitoring). Required for MVP before DB-backed roles. */
   ADMIN_API_KEY: z.string().optional(),
+
+  /** Caddy admin API URL for pushing route config. Empty string disables sync. */
+  CADDY_ADMIN_URL: z.string().default("http://localhost:2019"),
+
+  /** Cloudflare API token for DNS-01 challenge (wildcard TLS). */
+  CLOUDFLARE_API_TOKEN: z.string().optional(),
 });
 
 export type Config = z.infer<typeof envSchema>;
