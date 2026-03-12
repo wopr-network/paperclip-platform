@@ -40,9 +40,7 @@ describe("hydrateRoutes", () => {
   });
 
   it("does nothing when no wopr-* containers exist", async () => {
-    mockListContainers.mockResolvedValue([
-      { Names: ["/some-other-container"], State: "running", Id: "abc" },
-    ]);
+    mockListContainers.mockResolvedValue([{ Names: ["/some-other-container"], State: "running", Id: "abc" }]);
 
     await hydrateRoutes();
 
@@ -77,9 +75,7 @@ describe("hydrateRoutes", () => {
   });
 
   it("marks unhealthy containers in route table", async () => {
-    mockListContainers.mockResolvedValue([
-      { Names: ["/wopr-sick"], State: "running", Id: "container-1" },
-    ]);
+    mockListContainers.mockResolvedValue([{ Names: ["/wopr-sick"], State: "running", Id: "container-1" }]);
     mockCheckHealth.mockResolvedValue(false);
 
     await hydrateRoutes();
@@ -97,9 +93,7 @@ describe("hydrateRoutes", () => {
   });
 
   it("registers healthy containers without calling setRouteHealth", async () => {
-    mockListContainers.mockResolvedValue([
-      { Names: ["/wopr-healthy"], State: "running", Id: "container-1" },
-    ]);
+    mockListContainers.mockResolvedValue([{ Names: ["/wopr-healthy"], State: "running", Id: "container-1" }]);
     mockCheckHealth.mockResolvedValue(true);
 
     await hydrateRoutes();

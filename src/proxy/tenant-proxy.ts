@@ -1,5 +1,5 @@
-import type { MiddlewareHandler } from "hono";
 import { validateTenantAccess } from "@wopr-network/platform-core/auth";
+import type { MiddlewareHandler } from "hono";
 import { getConfig } from "../config.js";
 import { getOrgMemberRepo, getProfileStore } from "../fleet/services.js";
 import { logger } from "../log.js";

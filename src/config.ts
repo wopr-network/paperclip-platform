@@ -47,6 +47,9 @@ const envSchema = z.object({
 
   /** Directory for fleet profile data (file-based ProfileStore). */
   FLEET_DATA_DIR: z.string().default("/data/fleet"),
+
+  /** Maximum Paperclip instances a single tenant can provision. */
+  MAX_INSTANCES_PER_TENANT: z.coerce.number().default(5),
 });
 
 export type Config = z.infer<typeof envSchema>;

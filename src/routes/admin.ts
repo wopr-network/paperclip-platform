@@ -1,5 +1,5 @@
-import { Hono } from "hono";
 import { checkHealth } from "@wopr-network/provision-client";
+import { Hono } from "hono";
 import { getRoutes, setRouteHealth } from "../proxy/fleet-resolver.js";
 
 /**

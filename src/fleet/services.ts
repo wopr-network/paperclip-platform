@@ -9,11 +9,12 @@
  * All initialization is lazy — nothing runs at import time.
  */
 
-import Docker from "dockerode";
+import type { ICreditLedger } from "@wopr-network/platform-core/credits/credit-ledger";
 import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
 import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
 import { ProxyManager } from "@wopr-network/platform-core/proxy/manager";
 import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
+import Docker from "dockerode";
 import { getConfig } from "../config.js";
 
 let _docker: Docker | null = null;
@@ -21,6 +22,7 @@ let _store: ProfileStore | null = null;
 let _fleet: FleetManager | null = null;
 let _proxy: ProxyManager | null = null;
 let _orgMemberRepo: IOrgMemberRepository | null = null;
+let _creditLedger: ICreditLedger | null = null;
 
 export function getDocker(): Docker {
   if (!_docker) {
@@ -89,6 +91,20 @@ export function setOrgMemberRepo(repo: IOrgMemberRepository): void {
   _orgMemberRepo = repo;
 }
 
+/**
+ * ICreditLedger for checking tenant credit balance before provisioning.
+ *
+ * Must be set via setCreditLedger() at startup when a database
+ * is configured. Without it, billing checks are skipped.
+ */
+export function getCreditLedger(): ICreditLedger | null {
+  return _creditLedger;
+}
+
+export function setCreditLedger(ledger: ICreditLedger): void {
+  _creditLedger = ledger;
+}
+
 /** Reset all singletons — for testing only. */
 export function _resetServicesForTest(): void {
   _docker = null;
@@ -96,4 +112,5 @@ export function _resetServicesForTest(): void {
   _fleet = null;
   _proxy = null;
   _orgMemberRepo = null;
+  _creditLedger = null;
 }

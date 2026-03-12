@@ -10,15 +10,10 @@
  * - @wopr-network/provision-client for configuring containers via /internal/provision
  */
 
+import { checkHealth, deprovisionContainer, provisionContainer, updateBudget } from "@wopr-network/provision-client";
 import { Hono } from "hono";
-import {
-  provisionContainer,
-  updateBudget,
-  deprovisionContainer,
-  checkHealth,
-} from "@wopr-network/provision-client";
 import { getConfig } from "../config.js";
-import { getFleetManager } from "../fleet/services.js";
+import { getCreditLedger, getFleetManager, getProfileStore } from "../fleet/services.js";
 import { logger } from "../log.js";
 import { registerRoute, removeRoute } from "../proxy/fleet-resolver.js";
 
@@ -56,6 +51,23 @@ provisionWebhookRoutes.post("/create", async (c) => {
 
   const config = getConfig();
   const fleet = getFleetManager();
+
+  // Billing gate — require positive credit balance before provisioning
+  const ledger = getCreditLedger();
+  if (ledger) {
+    const balance = await ledger.balance(tenantId);
+    if (balance.isZero() || balance.isNegative()) {
+      return c.json({ error: "Insufficient credits: add funds before creating an instance" }, 402);
+    }
+  }
+
+  // Instance limit gate — cap instances per tenant
+  const store = getProfileStore();
+  const profiles = await store.list();
+  const tenantInstances = profiles.filter((p) => p.tenantId === tenantId);
+  if (tenantInstances.length >= config.MAX_INSTANCES_PER_TENANT) {
+    return c.json({ error: `Instance limit reached: maximum ${config.MAX_INSTANCES_PER_TENANT} per tenant` }, 403);
+  }
 
   // 1. Create the Docker container via FleetManager
   const profile = await fleet.create({

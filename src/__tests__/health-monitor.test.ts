@@ -21,9 +21,7 @@ vi.mock("../log.js", () => ({
   },
 }));
 
-const { runHealthChecks, startHealthMonitor, stopHealthMonitor } = await import(
-  "../fleet/health-monitor.js"
-);
+const { runHealthChecks, startHealthMonitor, stopHealthMonitor } = await import("../fleet/health-monitor.js");
 
 describe("health-monitor", () => {
   beforeEach(() => {
