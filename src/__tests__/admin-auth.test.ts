@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Stubs
 vi.stubEnv("PROVISION_SECRET", "test-secret");
 vi.stubEnv("GATEWAY_URL", "https://gateway.test/v1");
-vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.ai");
+vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.com");
 vi.stubEnv("ADMIN_API_KEY", "admin-key-123");
 
 const mockIsPlatformAdmin = vi.fn();

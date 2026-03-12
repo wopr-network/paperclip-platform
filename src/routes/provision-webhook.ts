@@ -35,7 +35,7 @@ function assertSecret(authHeader: string | undefined): boolean {
  * 1. Select target node via placement strategy
  * 2. FleetManager.create() → Docker container with the Paperclip image
  * 3. FleetManager.start() → start the container
- * 4. Register proxy route → subdomain.runpaperclip.ai → container
+ * 4. Register proxy route → subdomain.runpaperclip.com → container
  * 5. Wait for health check
  * 6. provision-client → configure the Paperclip instance (company, users, agents)
  */
@@ -133,7 +133,7 @@ provisionWebhookRoutes.post("/create", async (c) => {
     budgetCents: budgetCents ?? 0,
     adminUser: adminUser ?? {
       id: tenantId,
-      email: `${subdomain}@runpaperclip.ai`,
+      email: `${subdomain}@runpaperclip.com`,
       name: subdomain,
     },
     agents,

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // Stubs
 vi.stubEnv("PROVISION_SECRET", "test-secret");
 vi.stubEnv("GATEWAY_URL", "https://gateway.test/v1");
-vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.ai");
+vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.com");
 vi.stubEnv("MAX_INSTANCES_PER_TENANT", "3");
 
 const mockBalance = vi.fn();

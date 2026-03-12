@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Stubs
 vi.stubEnv("PROVISION_SECRET", "test-secret");
 vi.stubEnv("GATEWAY_URL", "https://gateway.test/v1");
-vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.ai");
+vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.com");
 
 const mockValidateTenantAccess = vi.fn();
 const mockGetOrgMemberRepo = vi.fn();
@@ -64,8 +64,8 @@ describe("tenant ownership check", () => {
     mockValidateTenantAccess.mockResolvedValue(false);
 
     const app = createApp();
-    const res = await app.request("http://acme.runpaperclip.ai/dashboard", {
-      headers: { host: "acme.runpaperclip.ai" },
+    const res = await app.request("http://acme.runpaperclip.com/dashboard", {
+      headers: { host: "acme.runpaperclip.com" },
     });
 
     expect(res.status).toBe(403);
@@ -85,8 +85,8 @@ describe("tenant ownership check", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
 
     const app = createApp();
-    const res = await app.request("http://acme.runpaperclip.ai/dashboard", {
-      headers: { host: "acme.runpaperclip.ai" },
+    const res = await app.request("http://acme.runpaperclip.com/dashboard", {
+      headers: { host: "acme.runpaperclip.com" },
     });
 
     expect(res.status).toBe(200);
@@ -103,8 +103,8 @@ describe("tenant ownership check", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
 
     const app = createApp();
-    const res = await app.request("http://acme.runpaperclip.ai/dashboard", {
-      headers: { host: "acme.runpaperclip.ai" },
+    const res = await app.request("http://acme.runpaperclip.com/dashboard", {
+      headers: { host: "acme.runpaperclip.com" },
     });
 
     expect(res.status).toBe(200);
@@ -122,8 +122,8 @@ describe("tenant ownership check", () => {
     globalThis.fetch = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
 
     const app = createApp();
-    const res = await app.request("http://acme.runpaperclip.ai/dashboard", {
-      headers: { host: "acme.runpaperclip.ai" },
+    const res = await app.request("http://acme.runpaperclip.com/dashboard", {
+      headers: { host: "acme.runpaperclip.com" },
     });
 
     // No profile match → ownership check skipped → proxied
@@ -135,8 +135,8 @@ describe("tenant ownership check", () => {
 
   it("passes through non-tenant requests without ownership check", async () => {
     const app = createApp();
-    const res = await app.request("http://runpaperclip.ai/health", {
-      headers: { host: "runpaperclip.ai" },
+    const res = await app.request("http://runpaperclip.com/health", {
+      headers: { host: "runpaperclip.com" },
     });
 
     expect(res.status).toBe(200);

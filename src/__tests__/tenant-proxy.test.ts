@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 // Stub env before importing modules that read config
 vi.stubEnv("PROVISION_SECRET", "test-secret");
 vi.stubEnv("GATEWAY_URL", "https://gateway.test/v1");
-vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.ai");
+vi.stubEnv("PLATFORM_DOMAIN", "runpaperclip.com");
 
 import { buildUpstreamHeaders, extractTenantSubdomain } from "../proxy/tenant-proxy.js";
 
@@ -13,17 +13,17 @@ afterAll(() => {
 
 describe("extractTenantSubdomain", () => {
   it("extracts valid subdomain", () => {
-    expect(extractTenantSubdomain("alice.runpaperclip.ai")).toBe("alice");
+    expect(extractTenantSubdomain("alice.runpaperclip.com")).toBe("alice");
   });
 
   it("returns null for root domain", () => {
-    expect(extractTenantSubdomain("runpaperclip.ai")).toBeNull();
+    expect(extractTenantSubdomain("runpaperclip.com")).toBeNull();
   });
 
   it("returns null for reserved subdomains", () => {
-    expect(extractTenantSubdomain("app.runpaperclip.ai")).toBeNull();
-    expect(extractTenantSubdomain("admin.runpaperclip.ai")).toBeNull();
-    expect(extractTenantSubdomain("www.runpaperclip.ai")).toBeNull();
+    expect(extractTenantSubdomain("app.runpaperclip.com")).toBeNull();
+    expect(extractTenantSubdomain("admin.runpaperclip.com")).toBeNull();
+    expect(extractTenantSubdomain("www.runpaperclip.com")).toBeNull();
   });
 
   it("returns null for wrong domain", () => {
@@ -31,16 +31,16 @@ describe("extractTenantSubdomain", () => {
   });
 
   it("returns null for sub-sub-domains", () => {
-    expect(extractTenantSubdomain("a.b.runpaperclip.ai")).toBeNull();
+    expect(extractTenantSubdomain("a.b.runpaperclip.com")).toBeNull();
   });
 
   it("strips port", () => {
-    expect(extractTenantSubdomain("alice.runpaperclip.ai:3200")).toBe("alice");
+    expect(extractTenantSubdomain("alice.runpaperclip.com:3200")).toBe("alice");
   });
 
   it("rejects invalid DNS labels", () => {
-    expect(extractTenantSubdomain("-bad.runpaperclip.ai")).toBeNull();
-    expect(extractTenantSubdomain("bad-.runpaperclip.ai")).toBeNull();
+    expect(extractTenantSubdomain("-bad.runpaperclip.com")).toBeNull();
+    expect(extractTenantSubdomain("bad-.runpaperclip.com")).toBeNull();
   });
 });
 

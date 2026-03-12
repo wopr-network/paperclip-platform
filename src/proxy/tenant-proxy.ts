@@ -25,9 +25,9 @@ const FORWARDED_HEADERS = [
 /**
  * Extract the tenant subdomain from a Host header value.
  *
- * "alice.runpaperclip.ai" → "alice"
- * "runpaperclip.ai"       → null (root domain)
- * "app.runpaperclip.ai"   → null (reserved)
+ * "alice.runpaperclip.com" → "alice"
+ * "runpaperclip.com"       → null (root domain)
+ * "app.runpaperclip.com"   → null (reserved)
  */
 export function extractTenantSubdomain(host: string): string | null {
   const hostname = host.split(":")[0].toLowerCase();
@@ -81,7 +81,7 @@ async function resolveUserId(c: Parameters<MiddlewareHandler>[0]): Promise<strin
 /**
  * Tenant subdomain proxy middleware.
  *
- * If the request Host identifies a tenant subdomain (e.g. alice.runpaperclip.ai),
+ * If the request Host identifies a tenant subdomain (e.g. alice.runpaperclip.com),
  * authenticates the user, resolves the fleet container URL, and proxies the request.
  *
  * If the host is absent, the root domain, or a reserved subdomain,

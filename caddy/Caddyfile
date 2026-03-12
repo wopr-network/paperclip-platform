@@ -1,4 +1,4 @@
-# Caddyfile for runpaperclip.ai — wildcard TLS reverse proxy
+# Caddyfile for runpaperclip.com — wildcard TLS reverse proxy
 #
 # This is the INITIAL Caddyfile. On startup, paperclip-platform pushes
 # its route table to the Caddy admin API (http://localhost:2019), which
@@ -18,20 +18,20 @@
 	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 }
 
-# Dashboard UI — app.runpaperclip.ai
-app.runpaperclip.ai {
+# Dashboard UI — app.runpaperclip.com
+app.runpaperclip.com {
 	reverse_proxy localhost:3200
 }
 
-# Root domain — runpaperclip.ai (redirect to dashboard)
-runpaperclip.ai {
-	redir https://app.runpaperclip.ai{uri} permanent
+# Root domain — runpaperclip.com (redirect to dashboard)
+runpaperclip.com {
+	redir https://app.runpaperclip.com{uri} permanent
 }
 
-# Wildcard catch-all — *.runpaperclip.ai
+# Wildcard catch-all — *.runpaperclip.com
 # This is replaced dynamically by ProxyManager.reload() via admin API.
 # It serves as a fallback for subdomains not yet in the route table.
-*.runpaperclip.ai {
+*.runpaperclip.com {
 	tls {
 		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 	}

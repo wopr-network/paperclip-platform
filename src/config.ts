@@ -8,13 +8,13 @@ const envSchema = z.object({
 
   /**
    * Domain that tenant subdomains live under.
-   * e.g. "runpaperclip.ai" → alice.runpaperclip.ai
+   * e.g. "runpaperclip.com" → alice.runpaperclip.com
    */
-  PLATFORM_DOMAIN: z.string().default("runpaperclip.ai"),
+  PLATFORM_DOMAIN: z.string().default("runpaperclip.com"),
 
   /**
    * Comma-separated list of allowed origins for CORS.
-   * In production this is the dashboard origin (e.g. https://runpaperclip.ai).
+   * In production this is the dashboard origin (e.g. https://runpaperclip.com).
    */
   UI_ORIGIN: z.string().default("http://localhost:3200"),
 

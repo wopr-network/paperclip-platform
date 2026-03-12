@@ -11,7 +11,7 @@ import { provisionWebhookRoutes } from "./routes/provision-webhook.js";
 
 export const app = new Hono();
 
-// Tenant subdomain proxy — catch-all for *.runpaperclip.ai requests.
+// Tenant subdomain proxy — catch-all for *.runpaperclip.com requests.
 // Mounted BEFORE CORS/auth so proxied traffic goes straight to the container.
 app.use("/*", tenantProxyMiddleware);
 
