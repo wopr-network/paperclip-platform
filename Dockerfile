@@ -18,6 +18,10 @@ RUN test -f dist/index.js || (echo "ERROR: build output missing" && exit 1)
 
 FROM base AS production
 WORKDIR /app
+# Add node user to docker group (GID from host socket — overridden at runtime if needed)
+RUN groupadd -g 1001 docker || true && usermod -aG docker node || true
+# Create fleet data directory with node user ownership
+RUN mkdir -p /data/fleet && chown -R node:node /data
 COPY --chown=node:node --from=deps /app/node_modules /app/node_modules
 COPY --chown=node:node --from=build /app/dist /app/dist
 COPY --chown=node:node --from=build /app/package.json /app/package.json

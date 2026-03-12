@@ -30,6 +30,13 @@ const envSchema = z.object({
    */
   GATEWAY_URL: z.string().url(),
 
+  /**
+   * API key for the platform's metered inference gateway.
+   * All hosted instances use this key — the platform bills tenants via credit ledger.
+   * No BYOK: users don't bring their own keys on runpaperclip.com.
+   */
+  GATEWAY_API_KEY: z.string().default(""),
+
   /** Database URL for platform state (Postgres). */
   DATABASE_URL: z.string().optional(),
 
@@ -72,6 +79,13 @@ const envSchema = z.object({
    * Only relevant when multiple nodes are configured.
    */
   FLEET_PLACEMENT_STRATEGY: z.string().default("least-loaded"),
+
+  /**
+   * Docker network to connect provisioned containers to.
+   * Required when the platform runs inside a compose network so containers
+   * are DNS-reachable by name. Empty string disables.
+   */
+  FLEET_DOCKER_NETWORK: z.string().default(""),
 });
 
 export type Config = z.infer<typeof envSchema>;

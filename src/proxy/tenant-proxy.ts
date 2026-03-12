@@ -20,6 +20,10 @@ const FORWARDED_HEADERS = [
   "content-length",
   "x-request-id",
   "user-agent",
+  "origin",
+  "referer",
+  "cookie",
+  "authorization",
 ];
 
 /**
@@ -50,6 +54,9 @@ export function buildUpstreamHeaders(incoming: Headers, userId: string, tenantSu
     const val = incoming.get(key);
     if (val) headers.set(key, val);
   }
+  // Forward original Host so Paperclip's hostname allowlist doesn't reject the request
+  const host = incoming.get("host");
+  if (host) headers.set("host", host);
   headers.set("x-paperclip-user-id", userId);
   headers.set("x-paperclip-tenant", tenantSubdomain);
   return headers;
