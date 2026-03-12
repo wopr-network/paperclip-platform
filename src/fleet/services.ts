@@ -9,6 +9,7 @@
  * All initialization is lazy — nothing runs at import time.
  */
 
+import type { IUserRoleRepository } from "@wopr-network/platform-core/auth";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits/credit-ledger";
 import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
 import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
@@ -23,6 +24,7 @@ let _fleet: FleetManager | null = null;
 let _proxy: ProxyManager | null = null;
 let _orgMemberRepo: IOrgMemberRepository | null = null;
 let _creditLedger: ICreditLedger | null = null;
+let _userRoleRepo: IUserRoleRepository | null = null;
 
 export function getDocker(): Docker {
   if (!_docker) {
@@ -105,6 +107,21 @@ export function setCreditLedger(ledger: ICreditLedger): void {
   _creditLedger = ledger;
 }
 
+/**
+ * IUserRoleRepository for checking platform admin status.
+ *
+ * Must be set via setUserRoleRepo() at startup when a database
+ * is configured. Without it, session-based admin access is unavailable
+ * (only ADMIN_API_KEY works for admin routes).
+ */
+export function getUserRoleRepo(): IUserRoleRepository | null {
+  return _userRoleRepo;
+}
+
+export function setUserRoleRepo(repo: IUserRoleRepository): void {
+  _userRoleRepo = repo;
+}
+
 /** Reset all singletons — for testing only. */
 export function _resetServicesForTest(): void {
   _docker = null;
@@ -113,4 +130,5 @@ export function _resetServicesForTest(): void {
   _proxy = null;
   _orgMemberRepo = null;
   _creditLedger = null;
+  _userRoleRepo = null;
 }

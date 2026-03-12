@@ -50,6 +50,9 @@ const envSchema = z.object({
 
   /** Maximum Paperclip instances a single tenant can provision. */
   MAX_INSTANCES_PER_TENANT: z.coerce.number().default(5),
+
+  /** API key for admin access (automation/monitoring). Required for MVP before DB-backed roles. */
+  ADMIN_API_KEY: z.string().optional(),
 });
 
 export type Config = z.infer<typeof envSchema>;
