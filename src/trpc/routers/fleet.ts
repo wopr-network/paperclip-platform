@@ -21,7 +21,7 @@ import {
   getPlacementStrategy,
   getProfileStore,
 } from "../../fleet/services.js";
-import { generateServiceKey, removeServiceKeys } from "../../gateway/service-keys.js";
+import { generateServiceKey, removeServiceKey } from "../../gateway/service-keys.js";
 import { logger } from "../../log.js";
 import { registerRoute, removeRoute } from "../../proxy/fleet-resolver.js";
 
@@ -97,7 +97,9 @@ export const fleetRouter = router({
     }
     const fleet = getFleetForInstance(input.id);
     const status = await fleet.status(input.id);
-    return { ...status, env: profile.env };
+    // Filter secrets from env before returning to the client
+    const { WOPR_PROVISION_SECRET, BETTER_AUTH_SECRET, DATABASE_URL, PAPERCLIP_GATEWAY_KEY, ...safeEnv } = profile.env;
+    return { ...status, env: safeEnv };
   }),
 
   /** Create a new Paperclip instance. */
@@ -193,9 +195,11 @@ export const fleetRouter = router({
         }
       }
 
-      // Generate a per-tenant gateway key for metered inference billing.
+      // Generate a per-instance gateway key for metered inference billing.
+      // Only when the gateway is enabled (OPENROUTER_API_KEY set).
       // Stored in the profile env as PAPERCLIP_GATEWAY_KEY so it survives restarts.
-      const gatewayKey = generateServiceKey(tenant);
+      const gatewayEnabled = Boolean(config.OPENROUTER_API_KEY);
+      const gatewayKey = gatewayEnabled ? generateServiceKey(tenant) : undefined;
 
       const env: Record<string, string> = {
         PORT: String(config.PAPERCLIP_CONTAINER_PORT),
@@ -209,7 +213,7 @@ export const fleetRouter = router({
         PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
         PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         PAPERCLIP_ALLOWED_HOSTNAMES: allowedHostnames.join(","),
-        PAPERCLIP_GATEWAY_KEY: gatewayKey,
+        ...(gatewayKey ? { PAPERCLIP_GATEWAY_KEY: gatewayKey } : {}),
         ...(instanceDbUrl ? { DATABASE_URL: instanceDbUrl } : {}),
         ...(input.env ?? {}),
       };
@@ -304,7 +308,7 @@ export const fleetRouter = router({
             tenantId: tenant,
             tenantName: input.name,
             gatewayUrl: config.GATEWAY_URL,
-            apiKey: gatewayKey,
+            apiKey: gatewayKey ?? "",
             budgetCents: 0,
             adminUser: { id: ctx.user.id, email: userEmail, name: userName },
             agents: [{ name: "CEO", role: "ceo", title: "Chief Executive Officer" }],
@@ -358,16 +362,18 @@ export const fleetRouter = router({
         case "restart":
           await fleet.restart(input.id);
           break;
-        case "destroy":
+        case "destroy": {
+          const key = profile.env.PAPERCLIP_GATEWAY_KEY;
+          if (key) removeServiceKey(key);
           try {
             await fleet.remove(input.id);
           } catch (err) {
             logger.warn(`Fleet remove failed for ${input.id}`, { err });
           }
           registry.unassignContainer(input.id);
-          removeServiceKeys(tenant);
           await removeRoute(input.id);
           break;
+        }
       }
 
       return { ok: true };

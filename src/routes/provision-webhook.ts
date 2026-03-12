@@ -15,6 +15,7 @@ import { checkHealth, deprovisionContainer, provisionContainer, updateBudget } f
 import { Hono } from "hono";
 import { getConfig } from "../config.js";
 import { getCreditLedger, getNodeRegistry, getPlacementStrategy, getProfileStore } from "../fleet/services.js";
+import { removeServiceKey } from "../gateway/service-keys.js";
 import { logger } from "../log.js";
 import { registerRoute, removeRoute } from "../proxy/fleet-resolver.js";
 
@@ -112,7 +113,9 @@ provisionWebhookRoutes.post("/create", async (c) => {
   const healthy = await waitForHealth(containerUrl);
   if (!healthy) {
     logger.warn(`Container not healthy after creation: ${subdomain}`);
-    // Clean up — remove container and route
+    // Clean up — remove container, route, and gateway key
+    const gwKey = profile.env?.PAPERCLIP_GATEWAY_KEY;
+    if (gwKey) removeServiceKey(gwKey);
     try {
       await fleet.remove(profile.id);
     } catch (err) {
@@ -191,6 +194,12 @@ provisionWebhookRoutes.post("/destroy", async (c) => {
       // Continue — container may already be gone
     }
   }
+
+  // Remove the instance's gateway service key (if any)
+  const store = getProfileStore();
+  const destroyProfile = await store.get(instanceId);
+  const gwKey = destroyProfile?.env?.PAPERCLIP_GATEWAY_KEY;
+  if (gwKey) removeServiceKey(gwKey);
 
   // Remove the Docker container
   try {

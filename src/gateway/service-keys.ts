@@ -1,9 +1,9 @@
 /**
- * Per-tenant gateway service key registry.
+ * Per-instance gateway service key registry.
  *
  * Each provisioned Paperclip instance gets a unique gateway key.
  * The key is stored in the instance's env (persisted in the profile YAML)
- * and loaded into this in-memory map at startup via hydrateServiceKeys().
+ * and loaded into this in-memory map at startup by wireGateway() (see src/index.ts).
  *
  * resolveServiceKey() is passed to mountGateway() so the gateway can
  * authenticate requests and resolve them to a tenant for billing.
@@ -16,12 +16,12 @@ import { logger } from "../log.js";
 /** Map of key hash → tenant metadata */
 const keyMap = new Map<string, { tenantId: string }>();
 
-/** Hash a raw key for constant-time lookup */
+/** Hash a raw key for map lookup (avoids storing raw secrets in memory). */
 function hashKey(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");
 }
 
-/** Generate a new per-tenant gateway key and register it. */
+/** Generate a new per-instance gateway key and register it. */
 export function generateServiceKey(tenantId: string): string {
   const raw = randomBytes(32).toString("hex");
   const hash = hashKey(raw);
@@ -36,16 +36,15 @@ export function registerServiceKey(rawKey: string, tenantId: string): void {
   keyMap.set(hash, { tenantId });
 }
 
-/** Remove all keys for a tenant (used on instance destroy). */
-export function removeServiceKeys(tenantId: string): void {
-  for (const [hash, meta] of keyMap) {
-    if (meta.tenantId === tenantId) keyMap.delete(hash);
-  }
+/** Remove a single service key by its raw value (used on instance destroy). */
+export function removeServiceKey(rawKey: string): void {
+  const hash = hashKey(rawKey);
+  keyMap.delete(hash);
 }
 
 /**
  * Resolve a bearer token to a GatewayTenant.
- * Uses timing-safe comparison via hash lookup (no raw key comparison).
+ * Hashes the input key and performs a Map lookup — no raw key comparison.
  */
 export function resolveServiceKey(key: string): GatewayTenant | null {
   const hash = hashKey(key);

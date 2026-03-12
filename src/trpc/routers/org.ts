@@ -180,88 +180,82 @@ export const orgRouter = router({
   // -------------------------------------------------------------------------
 
   /** Get credit balance for an organization. */
-  orgBillingBalance: orgMemberProcedure
-    .input(z.object({ orgId: z.string().min(1) }))
-    .query(async ({ input }) => {
-      const { creditLedger, meterAggregator } = deps();
-      if (!creditLedger || !meterAggregator) {
-        return { balanceCents: 0, dailyBurnCents: 0, runwayDays: null };
-      }
-      const tenant = input.orgId;
-      const balance = await creditLedger.balance(tenant);
-      const balanceCents = balance.toCentsRounded();
+  orgBillingBalance: orgMemberProcedure.input(z.object({ orgId: z.string().min(1) })).query(async ({ input }) => {
+    const { creditLedger, meterAggregator } = deps();
+    if (!creditLedger || !meterAggregator) {
+      return { balanceCents: 0, dailyBurnCents: 0, runwayDays: null };
+    }
+    const tenant = input.orgId;
+    const balance = await creditLedger.balance(tenant);
+    const balanceCents = balance.toCentsRounded();
 
-      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-      const { totalCharge } = await meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
-      const dailyBurnCents = Credit.fromRaw(Math.round(totalCharge / 7)).toCentsRounded();
-      const runwayDays = dailyBurnCents > 0 ? Math.floor(balanceCents / dailyBurnCents) : null;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const { totalCharge } = await meterAggregator.getTenantTotal(tenant, sevenDaysAgo);
+    const dailyBurnCents = Credit.fromRaw(Math.round(totalCharge / 7)).toCentsRounded();
+    const runwayDays = dailyBurnCents > 0 ? Math.floor(balanceCents / dailyBurnCents) : null;
 
-      return { balanceCents, dailyBurnCents, runwayDays };
-    }),
+    return { balanceCents, dailyBurnCents, runwayDays };
+  }),
 
   /** Get billing info (payment methods, invoices) for an organization. */
-  orgBillingInfo: orgMemberProcedure
-    .input(z.object({ orgId: z.string().min(1) }))
-    .query(async ({ input }) => {
-      const { processor } = deps();
-      if (!processor) {
-        return { paymentMethods: [], invoices: [] };
-      }
-      const tenant = input.orgId;
-      try {
-        const savedMethods = await processor.listPaymentMethods(tenant);
-        const paymentMethods = savedMethods.map((pm) => ({
-          id: pm.id,
-          brand: "",
-          last4: pm.label.match(/\d{4}$/)?.[0] ?? "",
-          expiryMonth: 0,
-          expiryYear: 0,
-          isDefault: pm.isDefault,
-        }));
+  orgBillingInfo: orgMemberProcedure.input(z.object({ orgId: z.string().min(1) })).query(async ({ input }) => {
+    const { processor } = deps();
+    if (!processor) {
+      return { paymentMethods: [], invoices: [] };
+    }
+    const tenant = input.orgId;
+    try {
+      const savedMethods = await processor.listPaymentMethods(tenant);
+      const paymentMethods = savedMethods.map((pm) => ({
+        id: pm.id,
+        brand: "",
+        last4: pm.label.match(/\d{4}$/)?.[0] ?? "",
+        expiryMonth: 0,
+        expiryYear: 0,
+        isDefault: pm.isDefault,
+      }));
 
-        const invoiceList = await processor.listInvoices(tenant);
+      const invoiceList = await processor.listInvoices(tenant);
 
-        return {
-          paymentMethods,
-          invoices: invoiceList.map((inv) => ({
-            id: inv.id,
-            date: inv.date,
-            amountCents: inv.amountCents,
-            status: inv.status,
-            downloadUrl: inv.downloadUrl,
-          })),
-        };
-      } catch {
-        return { paymentMethods: [], invoices: [] };
-      }
-    }),
-
-  /** Get per-member usage breakdown for an organization. */
-  orgMemberUsage: orgMemberProcedure
-    .input(z.object({ orgId: z.string().min(1) }))
-    .query(async ({ input }) => {
-      const { creditLedger } = deps();
-      const periodStart = new Date();
-      periodStart.setDate(1);
-      periodStart.setHours(0, 0, 0, 0);
-
-      if (!creditLedger) {
-        return { orgId: input.orgId, periodStart: periodStart.toISOString(), members: [] };
-      }
-
-      const members = await creditLedger.memberUsage(input.orgId);
       return {
-        orgId: input.orgId,
-        periodStart: periodStart.toISOString(),
-        members: members.map((m) => ({
-          memberId: m.userId,
-          name: "",
-          email: "",
-          creditsConsumedCents: m.totalDebit.toCents(),
-          lastActiveAt: null,
+        paymentMethods,
+        invoices: invoiceList.map((inv) => ({
+          id: inv.id,
+          date: inv.date,
+          amountCents: inv.amountCents,
+          status: inv.status,
+          downloadUrl: inv.downloadUrl,
         })),
       };
-    }),
+    } catch {
+      return { paymentMethods: [], invoices: [] };
+    }
+  }),
+
+  /** Get per-member usage breakdown for an organization. */
+  orgMemberUsage: orgMemberProcedure.input(z.object({ orgId: z.string().min(1) })).query(async ({ input }) => {
+    const { creditLedger } = deps();
+    const periodStart = new Date();
+    periodStart.setDate(1);
+    periodStart.setHours(0, 0, 0, 0);
+
+    if (!creditLedger) {
+      return { orgId: input.orgId, periodStart: periodStart.toISOString(), members: [] };
+    }
+
+    const members = await creditLedger.memberUsage(input.orgId);
+    return {
+      orgId: input.orgId,
+      periodStart: periodStart.toISOString(),
+      members: members.map((m) => ({
+        memberId: m.userId,
+        name: "",
+        email: "",
+        creditsConsumedCents: m.totalDebit.toCents(),
+        lastActiveAt: null,
+      })),
+    };
+  }),
 
   /** Create a Stripe Checkout session for org credit top-up. */
   orgTopupCheckout: orgMemberProcedure
@@ -294,14 +288,12 @@ export const orgRouter = router({
     }),
 
   /** Create a Stripe SetupIntent for adding a payment method to an org. */
-  orgSetupIntent: orgMemberProcedure
-    .input(z.object({ orgId: z.string().min(1) }))
-    .mutation(async ({ input }) => {
-      const { processor } = deps();
-      if (!processor) {
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing not configured" });
-      }
-      const intent = await processor.setupPaymentMethod(input.orgId);
-      return { clientSecret: intent.clientSecret };
-    }),
+  orgSetupIntent: orgMemberProcedure.input(z.object({ orgId: z.string().min(1) })).mutation(async ({ input }) => {
+    const { processor } = deps();
+    if (!processor) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing not configured" });
+    }
+    const intent = await processor.setupPaymentMethod(input.orgId);
+    return { clientSecret: intent.clientSecret };
+  }),
 });
