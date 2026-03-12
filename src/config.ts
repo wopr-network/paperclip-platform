@@ -86,6 +86,13 @@ const envSchema = z.object({
    * are DNS-reachable by name. Empty string disables.
    */
   FLEET_DOCKER_NETWORK: z.string().default(""),
+
+  /**
+   * OpenRouter API key for the metered inference gateway.
+   * The platform proxies LLM requests from tenant containers to OpenRouter,
+   * meters usage, and debits credits. Required for AI features.
+   */
+  OPENROUTER_API_KEY: z.string().optional(),
 });
 
 export type Config = z.infer<typeof envSchema>;

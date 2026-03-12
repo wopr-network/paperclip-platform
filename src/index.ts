@@ -4,7 +4,7 @@ import { app } from "./app.js";
 import { getConfig } from "./config.js";
 import { startHealthMonitor, stopHealthMonitor } from "./fleet/health-monitor.js";
 import { hydrateRoutes } from "./fleet/hydrate.js";
-import { getProxyManager, setCreditLedger, setUserRoleRepo } from "./fleet/services.js";
+import { getProfileStore, getProxyManager, setCreditLedger, setUserRoleRepo } from "./fleet/services.js";
 import { logger } from "./log.js";
 
 const config = getConfig();
@@ -54,6 +54,9 @@ serve(
         const { DrizzleUserRoleRepository } = await import("@wopr-network/platform-core/auth");
         setUserRoleRepo(new DrizzleUserRoleRepository(db));
         logger.info("User role repository initialized");
+
+        // --- Metered inference gateway (OpenRouter proxy) ---
+        await wireGateway(db, creditLedger);
 
         // --- tRPC router dependencies (billing, settings, profile, page-context) ---
         await wireTrpcDeps(db, pool, creditLedger);
@@ -212,8 +215,51 @@ async function wireTrpcDeps(
   });
 
   // --- Page context deps ---
-  const { DrizzlePageContextRepository } = await import(
-    "@wopr-network/platform-core/fleet/page-context-repository"
-  );
+  const { DrizzlePageContextRepository } = await import("@wopr-network/platform-core/fleet/page-context-repository");
   setPageContextRouterDeps({ repo: new DrizzlePageContextRepository(db) });
+}
+
+// ---------------------------------------------------------------------------
+// Metered inference gateway wiring
+// ---------------------------------------------------------------------------
+
+async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleDb, creditLedger: ICreditLedger) {
+  const config = getConfig();
+  if (!config.OPENROUTER_API_KEY) {
+    logger.warn("OPENROUTER_API_KEY not set — inference gateway disabled");
+    return;
+  }
+
+  const { mountGateway } = await import("@wopr-network/platform-core/gateway");
+  const { DrizzleMeterEventRepository, MeterEmitter } = await import("@wopr-network/platform-core/metering");
+  const { BudgetChecker } = await import("@wopr-network/platform-core/monetization");
+  const { resolveServiceKey, registerServiceKey } = await import("./gateway/service-keys.js");
+
+  const meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
+    walPath: `${config.FLEET_DATA_DIR}/meter-wal`,
+    dlqPath: `${config.FLEET_DATA_DIR}/meter-dlq`,
+  });
+  const budgetChecker = new BudgetChecker(db);
+
+  // Hydrate service keys from existing fleet profiles so restarted instances
+  // can still authenticate against the gateway.
+  const store = getProfileStore();
+  const profiles = await store.list();
+  for (const profile of profiles) {
+    const key = profile.env.PAPERCLIP_GATEWAY_KEY;
+    if (key) registerServiceKey(key, profile.tenantId);
+  }
+  logger.info(`Hydrated ${profiles.filter((p) => p.env.PAPERCLIP_GATEWAY_KEY).length} gateway service keys`);
+
+  mountGateway(app, {
+    meter,
+    budgetChecker,
+    creditLedger,
+    providers: {
+      openrouter: { apiKey: config.OPENROUTER_API_KEY },
+    },
+    resolveServiceKey,
+  });
+
+  logger.info("Inference gateway mounted at /v1 (OpenRouter)");
 }
