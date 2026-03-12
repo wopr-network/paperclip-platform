@@ -4,7 +4,7 @@ import { app } from "./app.js";
 import { getConfig } from "./config.js";
 import { startHealthMonitor, stopHealthMonitor } from "./fleet/health-monitor.js";
 import { hydrateRoutes } from "./fleet/hydrate.js";
-import { getProfileStore, getProxyManager, setCreditLedger, setUserRoleRepo } from "./fleet/services.js";
+import { getProxyManager, setCreditLedger, setServiceKeyRepo, setUserRoleRepo } from "./fleet/services.js";
 import { logger } from "./log.js";
 
 const config = getConfig();
@@ -230,26 +230,17 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
     return;
   }
 
-  const { mountGateway } = await import("@wopr-network/platform-core/gateway");
+  const { mountGateway, DrizzleServiceKeyRepository } = await import("@wopr-network/platform-core/gateway");
   const { DrizzleMeterEventRepository, MeterEmitter } = await import("@wopr-network/platform-core/metering");
-  const { BudgetChecker } = await import("@wopr-network/platform-core/monetization");
-  const { resolveServiceKey, registerServiceKey } = await import("./gateway/service-keys.js");
+  const { DrizzleBudgetChecker } = await import("@wopr-network/platform-core/monetization");
 
   const meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
     walPath: `${config.FLEET_DATA_DIR}/meter-wal`,
     dlqPath: `${config.FLEET_DATA_DIR}/meter-dlq`,
   });
-  const budgetChecker = new BudgetChecker(db);
-
-  // Hydrate service keys from existing fleet profiles so restarted instances
-  // can still authenticate against the gateway.
-  const store = getProfileStore();
-  const profiles = await store.list();
-  for (const profile of profiles) {
-    const key = profile.env.PAPERCLIP_GATEWAY_KEY;
-    if (key) registerServiceKey(key, profile.tenantId);
-  }
-  logger.info(`Hydrated ${profiles.filter((p) => p.env.PAPERCLIP_GATEWAY_KEY).length} gateway service keys`);
+  const budgetChecker = new DrizzleBudgetChecker(db);
+  const serviceKeyRepo = new DrizzleServiceKeyRepository(db);
+  setServiceKeyRepo(serviceKeyRepo);
 
   mountGateway(app, {
     meter,
@@ -258,7 +249,7 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
     providers: {
       openrouter: { apiKey: config.OPENROUTER_API_KEY },
     },
-    resolveServiceKey,
+    resolveServiceKey: (key) => serviceKeyRepo.resolve(key),
   });
 
   logger.info("Inference gateway mounted at /v1 (OpenRouter)");

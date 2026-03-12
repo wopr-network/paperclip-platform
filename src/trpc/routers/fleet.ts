@@ -20,8 +20,8 @@ import {
   getNodeRegistry,
   getPlacementStrategy,
   getProfileStore,
+  getServiceKeyRepo,
 } from "../../fleet/services.js";
-import { generateServiceKey, removeServiceKey } from "../../gateway/service-keys.js";
 import { logger } from "../../log.js";
 import { registerRoute, removeRoute } from "../../proxy/fleet-resolver.js";
 
@@ -196,10 +196,9 @@ export const fleetRouter = router({
       }
 
       // Generate a per-instance gateway key for metered inference billing.
-      // Only when the gateway is enabled (OPENROUTER_API_KEY set).
-      // Stored in the profile env as PAPERCLIP_GATEWAY_KEY so it survives restarts.
-      const gatewayEnabled = Boolean(config.OPENROUTER_API_KEY);
-      const gatewayKey = gatewayEnabled ? generateServiceKey(tenant) : undefined;
+      // Only when the gateway is enabled (service key repo wired at startup).
+      const serviceKeyRepo = getServiceKeyRepo();
+      const gatewayKey = serviceKeyRepo ? await serviceKeyRepo.generate(tenant, input.name) : undefined;
 
       const env: Record<string, string> = {
         PORT: String(config.PAPERCLIP_CONTAINER_PORT),
@@ -363,8 +362,8 @@ export const fleetRouter = router({
           await fleet.restart(input.id);
           break;
         case "destroy": {
-          const key = profile.env.PAPERCLIP_GATEWAY_KEY;
-          if (key) removeServiceKey(key);
+          const keyRepo = getServiceKeyRepo();
+          if (keyRepo) await keyRepo.revokeByInstance(input.id);
           try {
             await fleet.remove(input.id);
           } catch (err) {
