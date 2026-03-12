@@ -1,0 +1,31 @@
+# Local development Caddyfile — no TLS, localhost subdomains
+#
+# Routes:
+#   http://app.localhost:8080  → dashboard (platform-ui-core, port 3000)
+#   http://localhost:8080      → redirect to app.localhost
+#   http://*.localhost:8080    → paperclip-platform tenant proxy (port 3200)
+#
+# Note: *.localhost resolves to 127.0.0.1 in Chrome/Firefox.
+# For Safari/curl, add to /etc/hosts:
+#   127.0.0.1 app.localhost alice.localhost bob.localhost
+
+{
+	admin :2019
+	# No TLS for local dev
+	auto_https off
+}
+
+# Dashboard UI
+http://app.localhost:8080 {
+	reverse_proxy dashboard:3000
+}
+
+# Root domain redirect
+http://localhost:8080 {
+	redir http://app.localhost:8080{uri} temporary
+}
+
+# Wildcard — tenant subdomains routed to platform API (tenant proxy)
+http://*.localhost:8080 {
+	reverse_proxy platform:3200
+}

@@ -24,7 +24,10 @@
     "@wopr-network/provision-client": "^1.0.0",
     "better-auth": "^1.5.4",
     "dockerode": "^4.0.6",
+    "drizzle-orm": "^0.45.1",
     "hono": "^4.12.7",
+    "pg": "^8.20.0",
+    "stripe": "^20.4.1",
     "winston": "^3.19.0",
     "zod": "^4.3.6"
   },
@@ -32,6 +35,8 @@
     "@biomejs/biome": "^2.4.6",
     "@types/dockerode": "^3.3.35",
     "@types/node": "^25.4.0",
+    "@types/pg": "^8.18.0",
+    "drizzle-kit": "^0.31.9",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

@@ -1,0 +1,142 @@
+##
+## Full local testing stack for Paperclip Platform.
+##
+## Runs: Postgres + platform API + dashboard + Caddy + seed container
+##
+## Prerequisites:
+##   1. cp .env.local.example .env.local   # fill in Stripe test keys + secrets
+##   2. Build the managed Paperclip image:
+##      docker build -t paperclip-managed:local -f ~/paperclip/Dockerfile.managed ~/paperclip
+##   3. Start:
+##      docker compose -f docker-compose.local.yml up --build
+##
+## Access:
+##   Dashboard:  http://app.localhost:8080
+##   API:        http://localhost:3200/health
+##   Tenant:     http://{subdomain}.localhost:8080
+##   Caddy admin: http://localhost:2019
+##   Postgres:   localhost:5433 (mapped from container 5432)
+##
+
+services:
+  # --- Postgres (platform DB — auth, credits, billing) ---
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: paperclip
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paperclip-local}
+      POSTGRES_DB: paperclip_platform
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - paperclip
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperclip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Paperclip Platform API (Hono) ---
+  platform:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3200:3200"
+    env_file: .env.local
+    environment:
+      PORT: "3200"
+      HOST: "0.0.0.0"
+      NODE_ENV: development
+      DATABASE_URL: postgresql://paperclip:${POSTGRES_PASSWORD:-paperclip-local}@postgres:5432/paperclip_platform
+      CADDY_ADMIN_URL: http://caddy:2019
+      BETTER_AUTH_URL: http://localhost:3200
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - fleet-data:/data/fleet
+    networks:
+      - paperclip
+    depends_on:
+      postgres:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3200/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # --- Dashboard (platform-ui-core with Paperclip branding) ---
+  dashboard:
+    build:
+      context: ../platform-ui-core
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3200
+    ports:
+      - "3000:3000"
+    env_file: .env.local
+    environment:
+      PORT: "3000"
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3200
+    networks:
+      - paperclip
+    depends_on:
+      platform:
+        condition: service_healthy
+
+  # --- Caddy reverse proxy (localhost, no TLS) ---
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./caddy/Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - paperclip
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # --- Seed Paperclip container (for testing provision flow) ---
+  seed:
+    image: ${PAPERCLIP_IMAGE:-paperclip-managed:local}
+    container_name: wopr-seed
+    environment:
+      PORT: "3100"
+      HOST: "0.0.0.0"
+      NODE_ENV: production
+      WOPR_PROVISION_SECRET: ${PROVISION_SECRET:-local-dev-secret-change-me}
+      WOPR_GATEWAY_URL: ${GATEWAY_URL:-https://api.wopr.network/v1}
+      PAPERCLIP_DEPLOYMENT_MODE: local_trusted
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
+      PAPERCLIP_HOSTED_MODE: "true"
+    networks:
+      - paperclip
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3100/internal/provision/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  paperclip:
+    name: paperclip
+    driver: bridge
+
+volumes:
+  postgres-data:
+  fleet-data:
+  caddy-data:
+  caddy-config:

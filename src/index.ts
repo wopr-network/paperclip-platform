@@ -3,7 +3,7 @@ import { app } from "./app.js";
 import { getConfig } from "./config.js";
 import { startHealthMonitor, stopHealthMonitor } from "./fleet/health-monitor.js";
 import { hydrateRoutes } from "./fleet/hydrate.js";
-import { getProxyManager } from "./fleet/services.js";
+import { getProxyManager, setCreditLedger, setUserRoleRepo } from "./fleet/services.js";
 import { logger } from "./log.js";
 
 const config = getConfig();
@@ -17,6 +17,59 @@ serve(
   async (info) => {
     logger.info(`paperclip-platform listening on ${info.address}:${info.port}`);
     logger.info(`Tenant proxy domain: *.${config.PLATFORM_DOMAIN}`);
+
+    // --- Database + Auth + Billing (when DATABASE_URL is set) ---
+    const { hasDatabase } = await import("./db/index.js");
+    if (hasDatabase()) {
+      try {
+        const { getPool, getDb } = await import("./db/index.js");
+        const pool = getPool();
+        const db = getDb();
+
+        // Run platform-core Drizzle migrations
+        const { runMigrations } = await import("./db/migrate.js");
+        await runMigrations(pool);
+        logger.info("Database migrations complete");
+
+        // Initialize BetterAuth (sessions, signup, login)
+        const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
+        initBetterAuth({ pool, db });
+        await runAuthMigrations();
+        logger.info("BetterAuth initialized");
+
+        // Wire credit ledger (billing gate uses this)
+        const { DrizzleCreditLedger } = await import("@wopr-network/platform-core/credits/credit-ledger");
+        const creditLedger = new DrizzleCreditLedger(db);
+        setCreditLedger(creditLedger);
+        logger.info("Credit ledger initialized");
+
+        // Wire user role repo (admin auth session check)
+        const { DrizzleUserRoleRepository } = await import("@wopr-network/platform-core/auth");
+        setUserRoleRepo(new DrizzleUserRoleRepository(db));
+        logger.info("User role repository initialized");
+
+        // --- Stripe (when STRIPE_SECRET_KEY is set) ---
+        const stripeKey = process.env.STRIPE_SECRET_KEY;
+        if (stripeKey) {
+          const Stripe = (await import("stripe")).default;
+          const stripe = new Stripe(stripeKey);
+          logger.info("Stripe initialized (test mode)");
+
+          // Stripe webhook handling can be added later.
+          // For now, credits can be manually granted via admin API.
+          void stripe; // prevent unused warning
+        } else {
+          logger.warn("STRIPE_SECRET_KEY not set — Stripe integration disabled");
+        }
+      } catch (err) {
+        logger.error("Database/auth initialization failed", {
+          error: (err as Error).message,
+        });
+        logger.warn("Running without database — billing checks and auth sessions disabled");
+      }
+    } else {
+      logger.warn("DATABASE_URL not set — running without database (billing checks skipped, no persistent sessions)");
+    }
 
     // Start ProxyManager — enables Caddy sync on route changes
     const proxy = getProxyManager();
