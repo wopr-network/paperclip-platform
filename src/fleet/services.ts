@@ -14,6 +14,7 @@ import type { IUserRoleRepository } from "@wopr-network/platform-core/auth";
 import type { ICreditLedger } from "@wopr-network/platform-core/credits/credit-ledger";
 import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
 import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import type { IServiceKeyRepository } from "@wopr-network/platform-core/gateway";
 import { ProxyManager } from "@wopr-network/platform-core/proxy/manager";
 import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import Docker from "dockerode";
@@ -31,6 +32,7 @@ let _creditLedger: ICreditLedger | null = null;
 let _userRoleRepo: IUserRoleRepository | null = null;
 let _nodeRegistry: NodeRegistry | null = null;
 let _placementStrategy: PlacementStrategy | null = null;
+let _serviceKeyRepo: IServiceKeyRepository | null = null;
 
 export function getDocker(): Docker {
   if (!_docker) {
@@ -184,6 +186,20 @@ export function setUserRoleRepo(repo: IUserRoleRepository): void {
   _userRoleRepo = repo;
 }
 
+/**
+ * IServiceKeyRepository for gateway service key management.
+ *
+ * Must be set via setServiceKeyRepo() at startup when the inference
+ * gateway is enabled. Used by fleet operations to generate/revoke keys.
+ */
+export function getServiceKeyRepo(): IServiceKeyRepository | null {
+  return _serviceKeyRepo;
+}
+
+export function setServiceKeyRepo(repo: IServiceKeyRepository): void {
+  _serviceKeyRepo = repo;
+}
+
 /** Reset all singletons — for testing only. */
 export function _resetServicesForTest(): void {
   _docker = null;
@@ -195,4 +211,5 @@ export function _resetServicesForTest(): void {
   _userRoleRepo = null;
   _nodeRegistry = null;
   _placementStrategy = null;
+  _serviceKeyRepo = null;
 }

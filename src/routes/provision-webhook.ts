@@ -14,7 +14,13 @@
 import { checkHealth, deprovisionContainer, provisionContainer, updateBudget } from "@wopr-network/provision-client";
 import { Hono } from "hono";
 import { getConfig } from "../config.js";
-import { getCreditLedger, getNodeRegistry, getPlacementStrategy, getProfileStore } from "../fleet/services.js";
+import {
+  getCreditLedger,
+  getNodeRegistry,
+  getPlacementStrategy,
+  getProfileStore,
+  getServiceKeyRepo,
+} from "../fleet/services.js";
 import { logger } from "../log.js";
 import { registerRoute, removeRoute } from "../proxy/fleet-resolver.js";
 
@@ -112,7 +118,9 @@ provisionWebhookRoutes.post("/create", async (c) => {
   const healthy = await waitForHealth(containerUrl);
   if (!healthy) {
     logger.warn(`Container not healthy after creation: ${subdomain}`);
-    // Clean up — remove container and route
+    // Clean up — remove container, route, and gateway key
+    const keyRepo = getServiceKeyRepo();
+    if (keyRepo) await keyRepo.revokeByInstance(profile.id);
     try {
       await fleet.remove(profile.id);
     } catch (err) {
@@ -191,6 +199,10 @@ provisionWebhookRoutes.post("/destroy", async (c) => {
       // Continue — container may already be gone
     }
   }
+
+  // Revoke this instance's gateway service key
+  const keyRepo = getServiceKeyRepo();
+  if (keyRepo) await keyRepo.revokeByInstance(instanceId);
 
   // Remove the Docker container
   try {

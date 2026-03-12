@@ -6,23 +6,24 @@
  * to scope all operations.
  */
 
-import { TRPCError } from "@trpc/server";
-import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
-import { z } from "zod";
 import { randomBytes } from "node:crypto";
+import { TRPCError } from "@trpc/server";
+import { getUserEmail } from "@wopr-network/platform-core/email";
+import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
+import { checkHealth, provisionContainer } from "@wopr-network/provision-client";
+import { z } from "zod";
 import { getConfig } from "../../config.js";
+import { getPool } from "../../db/index.js";
 import {
   getCreditLedger,
   getDocker,
   getNodeRegistry,
   getPlacementStrategy,
   getProfileStore,
+  getServiceKeyRepo,
 } from "../../fleet/services.js";
-import { checkHealth, provisionContainer } from "@wopr-network/provision-client";
-import { getUserEmail } from "@wopr-network/platform-core/email";
 import { logger } from "../../log.js";
 import { registerRoute, removeRoute } from "../../proxy/fleet-resolver.js";
-import { getPool } from "../../db/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -84,28 +85,32 @@ export const fleetRouter = router({
   }),
 
   /** Get a single instance by ID. */
-  getInstance: protectedProcedure
-    .input(z.object({ id: z.string().min(1) }))
-    .query(async ({ input, ctx }) => {
-      const tenant = tenantFromCtx(ctx);
-      const store = getProfileStore();
-      const profile = await store.get(input.id);
-      if (!profile) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
-      }
-      if (profile.tenantId !== tenant) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-      }
-      const fleet = getFleetForInstance(input.id);
-      const status = await fleet.status(input.id);
-      return { ...status, env: profile.env };
-    }),
+  getInstance: protectedProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ input, ctx }) => {
+    const tenant = tenantFromCtx(ctx);
+    const store = getProfileStore();
+    const profile = await store.get(input.id);
+    if (!profile) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
+    }
+    if (profile.tenantId !== tenant) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+    }
+    const fleet = getFleetForInstance(input.id);
+    const status = await fleet.status(input.id);
+    // Filter secrets from env before returning to the client
+    const { WOPR_PROVISION_SECRET, BETTER_AUTH_SECRET, DATABASE_URL, PAPERCLIP_GATEWAY_KEY, ...safeEnv } = profile.env;
+    return { ...status, env: safeEnv };
+  }),
 
   /** Create a new Paperclip instance. */
   createInstance: protectedProcedure
     .input(
       z.object({
-        name: z.string().min(1).max(63).regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
+        name: z
+          .string()
+          .min(1)
+          .max(63)
+          .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/),
         template: z.string().optional(),
         provider: z.string().optional(),
         channels: z.array(z.string()).optional(),
@@ -185,8 +190,15 @@ export const fleetRouter = router({
         try {
           const u = new URL(origin.trim());
           if (u.port) allowedHostnames.push(`${tenantFqdn}:${u.port}`);
-        } catch { /* skip malformed origins */ }
+        } catch {
+          /* skip malformed origins */
+        }
       }
+
+      // Generate a per-instance gateway key for metered inference billing.
+      // Only when the gateway is enabled (service key repo wired at startup).
+      const serviceKeyRepo = getServiceKeyRepo();
+      const gatewayKey = serviceKeyRepo ? await serviceKeyRepo.generate(tenant, input.name) : undefined;
 
       const env: Record<string, string> = {
         PORT: String(config.PAPERCLIP_CONTAINER_PORT),
@@ -200,6 +212,7 @@ export const fleetRouter = router({
         PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
         PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         PAPERCLIP_ALLOWED_HOSTNAMES: allowedHostnames.join(","),
+        ...(gatewayKey ? { PAPERCLIP_GATEWAY_KEY: gatewayKey } : {}),
         ...(instanceDbUrl ? { DATABASE_URL: instanceDbUrl } : {}),
         ...(input.env ?? {}),
       };
@@ -275,7 +288,10 @@ export const fleetRouter = router({
       const containerUrl = `http://${upstreamHost}:${containerPort}`;
       let healthy = false;
       for (let i = 0; i < 15; i++) {
-        if (await checkHealth(containerUrl)) { healthy = true; break; }
+        if (await checkHealth(containerUrl)) {
+          healthy = true;
+          break;
+        }
         await new Promise((r) => setTimeout(r, 2000));
       }
 
@@ -291,12 +307,10 @@ export const fleetRouter = router({
             tenantId: tenant,
             tenantName: input.name,
             gatewayUrl: config.GATEWAY_URL,
-            apiKey: config.GATEWAY_API_KEY,
+            apiKey: gatewayKey ?? "",
             budgetCents: 0,
             adminUser: { id: ctx.user.id, email: userEmail, name: userName },
-            agents: [
-              { name: "CEO", role: "ceo", title: "Chief Executive Officer" },
-            ],
+            agents: [{ name: "CEO", role: "ceo", title: "Chief Executive Officer" }],
           });
           logger.info(`Provisioned instance ${input.name}: tenantEntityId=${provisionResult.tenantEntityId}`);
         } catch (err) {
@@ -347,7 +361,9 @@ export const fleetRouter = router({
         case "restart":
           await fleet.restart(input.id);
           break;
-        case "destroy":
+        case "destroy": {
+          const keyRepo = getServiceKeyRepo();
+          if (keyRepo) await keyRepo.revokeByInstance(input.id);
           try {
             await fleet.remove(input.id);
           } catch (err) {
@@ -356,36 +372,35 @@ export const fleetRouter = router({
           registry.unassignContainer(input.id);
           await removeRoute(input.id);
           break;
+        }
       }
 
       return { ok: true };
     }),
 
   /** Get health status for an instance. */
-  getInstanceHealth: protectedProcedure
-    .input(z.object({ id: z.string().min(1) }))
-    .query(async ({ input, ctx }) => {
-      const tenant = tenantFromCtx(ctx);
-      const store = getProfileStore();
-      const profile = await store.get(input.id);
-      if (!profile) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
-      }
-      if (profile.tenantId !== tenant) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-      }
+  getInstanceHealth: protectedProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ input, ctx }) => {
+    const tenant = tenantFromCtx(ctx);
+    const store = getProfileStore();
+    const profile = await store.get(input.id);
+    if (!profile) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
+    }
+    if (profile.tenantId !== tenant) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+    }
 
-      const fleet = getFleetForInstance(input.id);
-      const status = await fleet.status(input.id);
+    const fleet = getFleetForInstance(input.id);
+    const status = await fleet.status(input.id);
 
-      return {
-        id: status.id,
-        state: status.state,
-        health: status.health,
-        uptime: status.uptime,
-        stats: status.stats,
-      };
-    }),
+    return {
+      id: status.id,
+      state: status.state,
+      health: status.health,
+      uptime: status.uptime,
+      stats: status.stats,
+    };
+  }),
 
   /** Get container logs for an instance. */
   getInstanceLogs: protectedProcedure
@@ -409,27 +424,25 @@ export const fleetRouter = router({
     }),
 
   /** Get resource metrics for an instance. */
-  getInstanceMetrics: protectedProcedure
-    .input(z.object({ id: z.string().min(1) }))
-    .query(async ({ input, ctx }) => {
-      const tenant = tenantFromCtx(ctx);
-      const store = getProfileStore();
-      const profile = await store.get(input.id);
-      if (!profile) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
-      }
-      if (profile.tenantId !== tenant) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
-      }
+  getInstanceMetrics: protectedProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ input, ctx }) => {
+    const tenant = tenantFromCtx(ctx);
+    const store = getProfileStore();
+    const profile = await store.get(input.id);
+    if (!profile) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
+    }
+    if (profile.tenantId !== tenant) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+    }
 
-      const fleet = getFleetForInstance(input.id);
-      const status = await fleet.status(input.id);
+    const fleet = getFleetForInstance(input.id);
+    const status = await fleet.status(input.id);
 
-      return {
-        id: status.id,
-        stats: status.stats,
-      };
-    }),
+    return {
+      id: status.id,
+      stats: status.stats,
+    };
+  }),
 
   /** List available templates for instance creation. */
   listTemplates: protectedProcedure.query(() => {
