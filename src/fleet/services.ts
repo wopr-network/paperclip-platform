@@ -13,12 +13,14 @@ import Docker from "dockerode";
 import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
 import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
 import { ProxyManager } from "@wopr-network/platform-core/proxy/manager";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import { getConfig } from "../config.js";
 
 let _docker: Docker | null = null;
 let _store: ProfileStore | null = null;
 let _fleet: FleetManager | null = null;
 let _proxy: ProxyManager | null = null;
+let _orgMemberRepo: IOrgMemberRepository | null = null;
 
 export function getDocker(): Docker {
   if (!_docker) {
@@ -72,10 +74,26 @@ export function getProxyManager(): ProxyManager {
   return _proxy;
 }
 
+/**
+ * IOrgMemberRepository for checking tenant membership.
+ *
+ * Must be set via setOrgMemberRepo() at startup when a database
+ * is configured. Without it, tenant ownership checks are skipped
+ * (all authenticated users can access any tenant).
+ */
+export function getOrgMemberRepo(): IOrgMemberRepository | null {
+  return _orgMemberRepo;
+}
+
+export function setOrgMemberRepo(repo: IOrgMemberRepository): void {
+  _orgMemberRepo = repo;
+}
+
 /** Reset all singletons — for testing only. */
 export function _resetServicesForTest(): void {
   _docker = null;
   _store = null;
   _fleet = null;
   _proxy = null;
+  _orgMemberRepo = null;
 }

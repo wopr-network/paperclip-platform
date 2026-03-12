@@ -1,5 +1,7 @@
 import type { MiddlewareHandler } from "hono";
+import { validateTenantAccess } from "@wopr-network/platform-core/auth";
 import { getConfig } from "../config.js";
+import { getOrgMemberRepo, getProfileStore } from "../fleet/services.js";
 import { logger } from "../log.js";
 import { resolveContainerUrl } from "./fleet-resolver.js";
 
@@ -96,6 +98,20 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
   const userId = await resolveUserId(c);
   if (!userId) {
     return c.json({ error: "Authentication required" }, 401);
+  }
+
+  // Verify tenant ownership — user must belong to the org that owns this subdomain
+  const orgMemberRepo = getOrgMemberRepo();
+  if (orgMemberRepo) {
+    const store = getProfileStore();
+    const profiles = await store.list();
+    const profile = profiles.find((p) => p.name === subdomain);
+    if (profile) {
+      const hasAccess = await validateTenantAccess(userId, profile.tenantId, orgMemberRepo);
+      if (!hasAccess) {
+        return c.json({ error: "Forbidden: not a member of this tenant" }, 403);
+      }
+    }
   }
 
   // Resolve fleet container URL via ProxyManager-backed route table
