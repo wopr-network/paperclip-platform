@@ -21,7 +21,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.10",
     "@wopr-network/platform-core": "^1.12.2",
-    "@wopr-network/provision-client": "file:../provision-client",
+    "@wopr-network/provision-client": "^1.0.0",
     "better-auth": "^1.5.4",
     "dockerode": "^4.0.6",
     "hono": "^4.12.7",
