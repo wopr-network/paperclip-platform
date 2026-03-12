@@ -6,8 +6,8 @@
  */
 
 import { checkHealth } from "@wopr-network/provision-client";
-import { getRoutes, setRouteHealth } from "../proxy/fleet-resolver.js";
 import { logger } from "../log.js";
+import { getRoutes, setRouteHealth } from "../proxy/fleet-resolver.js";
 
 const DEFAULT_INTERVAL_MS = 30_000;
 

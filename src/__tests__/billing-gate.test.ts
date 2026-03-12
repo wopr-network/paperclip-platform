@@ -13,12 +13,26 @@ const mockFleetCreate = vi.fn();
 const mockFleetStart = vi.fn();
 let ledgerEnabled = true;
 
+const mockFleet = { create: mockFleetCreate, start: mockFleetStart };
+
 vi.mock("../fleet/services.js", () => ({
   getCreditLedger: () => (ledgerEnabled ? { balance: mockBalance } : null),
-  getFleetManager: () => ({ create: mockFleetCreate, start: mockFleetStart }),
+  getFleetManager: () => mockFleet,
   getProfileStore: () => ({ list: mockProfileStoreList }),
   getDocker: () => ({}),
   getProxyManager: () => ({ getRoutes: () => [] }),
+  getNodeRegistry: () => ({
+    list: () => [{ config: { id: "local", name: "local", host: "localhost" }, docker: {}, fleet: mockFleet }],
+    getContainerCounts: () => new Map([["local", 0]]),
+    assignContainer: vi.fn(),
+    unassignContainer: vi.fn(),
+    resolveUpstreamHost: (_id: string, name: string) => name,
+    getContainerNode: () => "local",
+    getFleetManager: () => mockFleet,
+  }),
+  getPlacementStrategy: () => ({
+    selectNode: (nodes: any[]) => nodes[0],
+  }),
 }));
 
 vi.mock("../proxy/fleet-resolver.js", () => ({

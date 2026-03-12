@@ -59,6 +59,19 @@ const envSchema = z.object({
 
   /** Cloudflare API token for DNS-01 challenge (wildcard TLS). */
   CLOUDFLARE_API_TOKEN: z.string().optional(),
+
+  /**
+   * JSON array of Docker host nodes for multi-node scaling.
+   * Each entry: { id, name, host, dockerUrl?, maxContainers? }
+   * When empty or unset, uses local Docker socket only (single-node mode).
+   */
+  FLEET_NODES: z.string().default(""),
+
+  /**
+   * Container placement strategy: "least-loaded" or "round-robin".
+   * Only relevant when multiple nodes are configured.
+   */
+  FLEET_PLACEMENT_STRATEGY: z.string().default("least-loaded"),
 });
 
 export type Config = z.infer<typeof envSchema>;

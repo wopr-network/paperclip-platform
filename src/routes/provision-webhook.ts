@@ -8,12 +8,13 @@
  * Uses:
  * - platform-core FleetManager for Docker container lifecycle
  * - @wopr-network/provision-client for configuring containers via /internal/provision
+ * - NodeRegistry + PlacementStrategy for multi-node container placement
  */
 
 import { checkHealth, deprovisionContainer, provisionContainer, updateBudget } from "@wopr-network/provision-client";
 import { Hono } from "hono";
 import { getConfig } from "../config.js";
-import { getCreditLedger, getFleetManager, getProfileStore } from "../fleet/services.js";
+import { getCreditLedger, getNodeRegistry, getPlacementStrategy, getProfileStore } from "../fleet/services.js";
 import { logger } from "../log.js";
 import { registerRoute, removeRoute } from "../proxy/fleet-resolver.js";
 
@@ -31,11 +32,12 @@ function assertSecret(authHeader: string | undefined): boolean {
  * POST /api/provision/create — create a new Paperclip instance.
  *
  * Flow:
- * 1. FleetManager.create() → Docker container with the Paperclip image
- * 2. FleetManager.start() → start the container
- * 3. Register proxy route → subdomain.runpaperclip.ai → container
- * 4. Wait for health check
- * 5. provision-client → configure the Paperclip instance (company, users, agents)
+ * 1. Select target node via placement strategy
+ * 2. FleetManager.create() → Docker container with the Paperclip image
+ * 3. FleetManager.start() → start the container
+ * 4. Register proxy route → subdomain.runpaperclip.ai → container
+ * 5. Wait for health check
+ * 6. provision-client → configure the Paperclip instance (company, users, agents)
  */
 provisionWebhookRoutes.post("/create", async (c) => {
   if (!assertSecret(c.req.header("authorization"))) {
@@ -50,7 +52,7 @@ provisionWebhookRoutes.post("/create", async (c) => {
   }
 
   const config = getConfig();
-  const fleet = getFleetManager();
+  const registry = getNodeRegistry();
 
   // Billing gate — require positive credit balance before provisioning
   const ledger = getCreditLedger();
@@ -69,7 +71,16 @@ provisionWebhookRoutes.post("/create", async (c) => {
     return c.json({ error: `Instance limit reached: maximum ${config.MAX_INSTANCES_PER_TENANT} per tenant` }, 403);
   }
 
-  // 1. Create the Docker container via FleetManager
+  // Select target node via placement strategy
+  const strategy = getPlacementStrategy();
+  const nodes = registry.list();
+  const containerCounts = registry.getContainerCounts();
+  const targetNode = strategy.selectNode(nodes, containerCounts);
+  const fleet = targetNode.fleet;
+
+  logger.info(`Placing container on node: ${targetNode.config.name} (${targetNode.config.id})`);
+
+  // 1. Create the Docker container via FleetManager on the target node
   const profile = await fleet.create({
     tenantId,
     name: subdomain,
@@ -87,13 +98,17 @@ provisionWebhookRoutes.post("/create", async (c) => {
   // 2. Start the container
   await fleet.start(profile.id);
 
-  // 3. Register proxy route — FleetManager names containers "wopr-{name}"
-  const containerHost = `wopr-${subdomain}`;
+  // Track container → node assignment
+  registry.assignContainer(profile.id, targetNode.config.id);
+
+  // 3. Register proxy route — use node-appropriate upstream host
+  const containerName = `wopr-${subdomain}`;
+  const upstreamHost = registry.resolveUpstreamHost(profile.id, containerName);
   const containerPort = config.PAPERCLIP_CONTAINER_PORT;
-  await registerRoute(profile.id, subdomain, containerHost, containerPort);
+  await registerRoute(profile.id, subdomain, upstreamHost, containerPort);
 
   // 4. Wait for container to become healthy
-  const containerUrl = `http://${containerHost}:${containerPort}`;
+  const containerUrl = `http://${upstreamHost}:${containerPort}`;
   const healthy = await waitForHealth(containerUrl);
   if (!healthy) {
     logger.warn(`Container not healthy after creation: ${subdomain}`);
@@ -103,6 +118,7 @@ provisionWebhookRoutes.post("/create", async (c) => {
     } catch (err) {
       logger.warn("Cleanup after unhealthy container failed", { err });
     }
+    registry.unassignContainer(profile.id);
     await removeRoute(profile.id);
     return c.json({ error: "Container failed health check" }, 503);
   }
@@ -123,7 +139,7 @@ provisionWebhookRoutes.post("/create", async (c) => {
     agents,
   });
 
-  logger.info(`Created Paperclip instance: ${subdomain} (${profile.id})`);
+  logger.info(`Created Paperclip instance: ${subdomain} (${profile.id}) on node ${targetNode.config.name}`);
 
   return c.json(
     {
@@ -131,6 +147,7 @@ provisionWebhookRoutes.post("/create", async (c) => {
       instanceId: profile.id,
       subdomain,
       containerUrl,
+      nodeId: targetNode.config.id,
       ...result,
     },
     201,
@@ -153,15 +170,20 @@ provisionWebhookRoutes.post("/destroy", async (c) => {
   }
 
   const config = getConfig();
-  const fleet = getFleetManager();
+  const registry = getNodeRegistry();
+
+  // Resolve which node this container is on
+  const nodeId = registry.getContainerNode(instanceId);
+  const fleet = nodeId ? registry.getFleetManager(nodeId) : registry.list()[0].fleet;
 
   // Deprovision the Paperclip instance first (graceful teardown)
   if (tenantEntityId) {
     try {
       const status = await fleet.status(instanceId);
       if (status.state === "running") {
-        const containerHost = `wopr-${status.name}`;
-        const containerUrl = `http://${containerHost}:${config.PAPERCLIP_CONTAINER_PORT}`;
+        const containerName = `wopr-${status.name}`;
+        const upstreamHost = registry.resolveUpstreamHost(instanceId, containerName);
+        const containerUrl = `http://${upstreamHost}:${config.PAPERCLIP_CONTAINER_PORT}`;
         await deprovisionContainer(containerUrl, config.PROVISION_SECRET, tenantEntityId);
       }
     } catch (err) {
@@ -177,7 +199,8 @@ provisionWebhookRoutes.post("/destroy", async (c) => {
     logger.warn(`Fleet remove failed for ${instanceId}`, { err });
   }
 
-  // Remove from proxy route table
+  // Remove from tracking and proxy route table
+  registry.unassignContainer(instanceId);
   await removeRoute(instanceId);
 
   logger.info(`Destroyed Paperclip instance: ${instanceId}`);
@@ -200,15 +223,20 @@ provisionWebhookRoutes.put("/budget", async (c) => {
   }
 
   const config = getConfig();
-  const fleet = getFleetManager();
+  const registry = getNodeRegistry();
+
+  // Resolve which node this container is on
+  const nodeId = registry.getContainerNode(instanceId);
+  const fleet = nodeId ? registry.getFleetManager(nodeId) : registry.list()[0].fleet;
 
   const status = await fleet.status(instanceId);
   if (status.state !== "running") {
     return c.json({ error: "Instance not running" }, 503);
   }
 
-  const containerHost = `wopr-${status.name}`;
-  const containerUrl = `http://${containerHost}:${config.PAPERCLIP_CONTAINER_PORT}`;
+  const containerName = `wopr-${status.name}`;
+  const upstreamHost = registry.resolveUpstreamHost(instanceId, containerName);
+  const containerUrl = `http://${upstreamHost}:${config.PAPERCLIP_CONTAINER_PORT}`;
 
   await updateBudget(containerUrl, config.PROVISION_SECRET, tenantEntityId, budgetCents, perAgentCents);
 

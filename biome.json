@@ -5,9 +5,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": [
-      "src/**/*.ts"
-    ]
+    "includes": ["src/**/*.ts"]
   },
   "formatter": {
     "enabled": true,
@@ -28,12 +26,7 @@
         "noConsole": {
           "level": "error",
           "options": {
-            "allow": [
-              "assert",
-              "error",
-              "info",
-              "warn"
-            ]
+            "allow": ["assert", "error", "info", "warn"]
           }
         }
       },
@@ -52,9 +45,7 @@
   },
   "overrides": [
     {
-      "includes": [
-        "src/**/*.test.ts"
-      ],
+      "includes": ["src/**/*.test.ts"],
       "linter": {
         "rules": {
           "suspicious": {

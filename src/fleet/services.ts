@@ -5,6 +5,7 @@
  * - FleetManager for Docker container lifecycle
  * - ProxyManager for tenant subdomain routing
  * - ProfileStore for bot profile persistence
+ * - NodeRegistry for multi-node Docker host management
  *
  * All initialization is lazy — nothing runs at import time.
  */
@@ -17,6 +18,9 @@ import { ProxyManager } from "@wopr-network/platform-core/proxy/manager";
 import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
 import Docker from "dockerode";
 import { getConfig } from "../config.js";
+import { logger } from "../log.js";
+import { LOCAL_NODE_ID, type NodeConfig, NodeRegistry } from "./node-registry.js";
+import { createPlacementStrategy, type PlacementStrategy } from "./placement.js";
 
 let _docker: Docker | null = null;
 let _store: ProfileStore | null = null;
@@ -25,6 +29,8 @@ let _proxy: ProxyManager | null = null;
 let _orgMemberRepo: IOrgMemberRepository | null = null;
 let _creditLedger: ICreditLedger | null = null;
 let _userRoleRepo: IUserRoleRepository | null = null;
+let _nodeRegistry: NodeRegistry | null = null;
+let _placementStrategy: PlacementStrategy | null = null;
 
 export function getDocker(): Docker {
   if (!_docker) {
@@ -42,7 +48,7 @@ export function getProfileStore(): ProfileStore {
 }
 
 /**
- * FleetManager for Paperclip container lifecycle.
+ * FleetManager for the local Docker host.
  *
  * Created WITHOUT a ProxyManager — we register proxy routes manually
  * after container creation so we can control the upstream port
@@ -61,6 +67,59 @@ export function getFleetManager(): FleetManager {
     );
   }
   return _fleet;
+}
+
+/**
+ * Node registry for multi-node Docker host management.
+ *
+ * Initialized from FLEET_NODES env var (JSON array of NodeConfig).
+ * When FLEET_NODES is empty, registers only the local Docker socket.
+ */
+export function getNodeRegistry(): NodeRegistry {
+  if (!_nodeRegistry) {
+    _nodeRegistry = new NodeRegistry();
+    const config = getConfig();
+    const store = getProfileStore();
+
+    // Parse FLEET_NODES if provided
+    let nodeConfigs: NodeConfig[] = [];
+    if (config.FLEET_NODES) {
+      try {
+        nodeConfigs = JSON.parse(config.FLEET_NODES);
+      } catch {
+        logger.warn("Failed to parse FLEET_NODES — using local node only");
+      }
+    }
+
+    if (nodeConfigs.length > 0) {
+      // Multi-node mode — register all configured nodes
+      for (const nodeConfig of nodeConfigs) {
+        _nodeRegistry.register(nodeConfig, store);
+      }
+      logger.info(`Multi-node mode: ${nodeConfigs.length} node(s) registered`);
+    } else {
+      // Single-node mode — register local Docker socket
+      _nodeRegistry.register(
+        {
+          id: LOCAL_NODE_ID,
+          name: "local",
+          host: "localhost",
+          useContainerNames: true,
+        },
+        store,
+      );
+    }
+  }
+  return _nodeRegistry;
+}
+
+/** Placement strategy for distributing containers across nodes. */
+export function getPlacementStrategy(): PlacementStrategy {
+  if (!_placementStrategy) {
+    const config = getConfig();
+    _placementStrategy = createPlacementStrategy(config.FLEET_PLACEMENT_STRATEGY);
+  }
+  return _placementStrategy;
 }
 
 /**
@@ -134,4 +193,6 @@ export function _resetServicesForTest(): void {
   _orgMemberRepo = null;
   _creditLedger = null;
   _userRoleRepo = null;
+  _nodeRegistry = null;
+  _placementStrategy = null;
 }
