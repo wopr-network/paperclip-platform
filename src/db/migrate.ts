@@ -14,8 +14,11 @@ const require = createRequire(import.meta.url);
 
 export async function runMigrations(pool: pg.Pool): Promise<void> {
   const db = drizzle(pool, { schema });
-  // Resolve migrations folder from platform-core package
-  const corePkg = require.resolve("@wopr-network/platform-core/package.json");
-  const migrationsFolder = path.resolve(path.dirname(corePkg), "drizzle/migrations");
+  // Resolve migrations folder from platform-core package.
+  // Use the main export (which is in dist/) to find the package root,
+  // since the exports map doesn't expose ./package.json.
+  const coreMain = require.resolve("@wopr-network/platform-core");
+  const coreRoot = path.resolve(path.dirname(coreMain), "..");
+  const migrationsFolder = path.resolve(coreRoot, "drizzle/migrations");
   await migrate(db, { migrationsFolder });
 }

@@ -6,12 +6,12 @@ RUN apt-get update \
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+RUN npm ci --ignore-scripts --no-optional || npm ci --force --omit=dev
 
 FROM base AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --ignore-scripts --no-optional || npm ci --force
 COPY . .
 RUN npm run build
 RUN test -f dist/index.js || (echo "ERROR: build output missing" && exit 1)

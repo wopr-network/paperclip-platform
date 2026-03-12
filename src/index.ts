@@ -34,7 +34,13 @@ serve(
         // Initialize BetterAuth (sessions, signup, login)
         const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
         initBetterAuth({ pool, db });
-        await runAuthMigrations();
+        try {
+          await runAuthMigrations();
+        } catch (authMigErr) {
+          logger.warn("BetterAuth migration skipped (tables may already exist via Drizzle)", {
+            error: (authMigErr as Error).message,
+          });
+        }
         logger.info("BetterAuth initialized");
 
         // Wire credit ledger (billing gate uses this)

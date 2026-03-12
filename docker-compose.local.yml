@@ -84,6 +84,7 @@ services:
       PORT: "3000"
       NODE_ENV: development
       NEXT_PUBLIC_API_URL: http://localhost:3200
+      E2E_MOCK_API: "1"
     networks:
       - paperclip
     depends_on:
@@ -117,10 +118,14 @@ services:
       NODE_ENV: production
       WOPR_PROVISION_SECRET: ${PROVISION_SECRET:-local-dev-secret-change-me}
       WOPR_GATEWAY_URL: ${GATEWAY_URL:-https://api.wopr.network/v1}
-      PAPERCLIP_DEPLOYMENT_MODE: local_trusted
+      PAPERCLIP_DEPLOYMENT_MODE: authenticated
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
+      BETTER_AUTH_SECRET: local-seed-secret-not-for-production
       PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
       PAPERCLIP_HOSTED_MODE: "true"
+      DATABASE_URL: postgresql://paperclip:${POSTGRES_PASSWORD:-paperclip-local}@postgres:5432/paperclip_seed
+    volumes:
+      - seed-data:/paperclip
     networks:
       - paperclip
     healthcheck:
@@ -140,3 +145,4 @@ volumes:
   fleet-data:
   caddy-data:
   caddy-config:
+  seed-data:
