@@ -10,7 +10,7 @@ import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
 import type { IPaymentProcessor, PayRamChargeRepository } from "@wopr-network/platform-core/billing";
 import { createPayRamCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import {
   ALLOWED_SCHEDULE_INTERVALS,
   ALLOWED_THRESHOLDS,
@@ -130,7 +130,7 @@ const PLAN_TIERS = [
 export interface BillingRouterDeps {
   processor: IPaymentProcessor;
   tenantRepo: ITenantCustomerRepository;
-  creditLedger: ICreditLedger;
+  creditLedger: ILedger;
   meterAggregator: IMeterAggregator;
   priceMap: CreditPriceMap | undefined;
   autoTopupSettingsStore: IAutoTopupSettingsRepository;

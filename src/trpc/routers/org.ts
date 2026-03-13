@@ -6,7 +6,7 @@
 
 import { TRPCError } from "@trpc/server";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { IAuthUserRepository } from "@wopr-network/platform-core/db/auth-user-repository";
 import type { IMeterAggregator } from "@wopr-network/platform-core/metering";
@@ -23,7 +23,7 @@ import { z } from "zod";
 export type OrgRouterDeps = {
   orgService: OrgService;
   authUserRepo: IAuthUserRepository;
-  creditLedger?: ICreditLedger;
+  creditLedger?: ILedger;
   meterAggregator?: IMeterAggregator;
   processor?: IPaymentProcessor;
   priceMap?: CreditPriceMap;

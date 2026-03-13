@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits/credit-ledger";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { app } from "./app.js";
 import { getConfig } from "./config.js";
 import { startHealthMonitor, stopHealthMonitor } from "./fleet/health-monitor.js";
@@ -33,27 +33,20 @@ serve(
         logger.info("Database migrations complete");
 
         // Wire credit ledger FIRST (needed by onUserCreated hook below)
-        const { DrizzleCreditLedger } = await import("@wopr-network/platform-core/credits/credit-ledger");
-        const { Credit } = await import("@wopr-network/platform-core/credits/credit");
-        const creditLedger = new DrizzleCreditLedger(db);
+        const { DrizzleLedger, grantSignupCredits } = await import("@wopr-network/platform-core/credits");
+        const creditLedger = new DrizzleLedger(db);
         setCreditLedger(creditLedger);
         logger.info("Credit ledger initialized");
 
         // Initialize BetterAuth (sessions, signup, login)
         const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
-        const SIGNUP_GRANT_CENTS = 500; // $5 welcome credits
         initBetterAuth({
           pool,
           db,
-          onUserCreated: async (userId, userName) => {
+          onUserCreated: async (userId) => {
             try {
-              await creditLedger.credit(
-                userId, // personal tenant = userId
-                Credit.fromCents(SIGNUP_GRANT_CENTS),
-                "signup_grant",
-                `Welcome credits for ${userName}`,
-              );
-              logger.info(`Granted $${SIGNUP_GRANT_CENTS / 100} welcome credits to user ${userId}`);
+              const granted = await grantSignupCredits(creditLedger, userId);
+              if (granted) logger.info(`Granted $5 welcome credits to user ${userId}`);
             } catch (err) {
               logger.error("Failed to grant signup credits:", err);
             }
@@ -133,7 +126,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 async function wireTrpcDeps(
   db: import("@wopr-network/platform-core/db").DrizzleDb,
   pool: import("pg").Pool,
-  creditLedger: ICreditLedger,
+  creditLedger: ILedger,
 ) {
   const { setBillingRouterDeps } = await import("./trpc/routers/billing.js");
   const { setSettingsRouterDeps } = await import("./trpc/routers/settings.js");
@@ -241,7 +234,7 @@ async function wireTrpcDeps(
 // Metered inference gateway wiring
 // ---------------------------------------------------------------------------
 
-async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleDb, creditLedger: ICreditLedger) {
+async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleDb, creditLedger: ILedger) {
   const config = getConfig();
   if (!config.OPENROUTER_API_KEY) {
     logger.warn("OPENROUTER_API_KEY not set — inference gateway disabled");

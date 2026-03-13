@@ -11,7 +11,7 @@
  */
 
 import type { IUserRoleRepository } from "@wopr-network/platform-core/auth";
-import type { ICreditLedger } from "@wopr-network/platform-core/credits/credit-ledger";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
 import { ProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
 import type { IServiceKeyRepository } from "@wopr-network/platform-core/gateway";
@@ -28,7 +28,7 @@ let _store: ProfileStore | null = null;
 let _fleet: FleetManager | null = null;
 let _proxy: ProxyManager | null = null;
 let _orgMemberRepo: IOrgMemberRepository | null = null;
-let _creditLedger: ICreditLedger | null = null;
+let _creditLedger: ILedger | null = null;
 let _userRoleRepo: IUserRoleRepository | null = null;
 let _nodeRegistry: NodeRegistry | null = null;
 let _placementStrategy: PlacementStrategy | null = null;
@@ -158,16 +158,16 @@ export function setOrgMemberRepo(repo: IOrgMemberRepository): void {
 }
 
 /**
- * ICreditLedger for checking tenant credit balance before provisioning.
+ * ILedger for checking tenant credit balance before provisioning.
  *
  * Must be set via setCreditLedger() at startup when a database
  * is configured. Without it, billing checks are skipped.
  */
-export function getCreditLedger(): ICreditLedger | null {
+export function getCreditLedger(): ILedger | null {
   return _creditLedger;
 }
 
-export function setCreditLedger(ledger: ICreditLedger): void {
+export function setCreditLedger(ledger: ILedger): void {
   _creditLedger = ledger;
 }
 
