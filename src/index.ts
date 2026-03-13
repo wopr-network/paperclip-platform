@@ -32,9 +32,33 @@ serve(
         await runMigrations(pool);
         logger.info("Database migrations complete");
 
+        // Wire credit ledger FIRST (needed by onUserCreated hook below)
+        const { DrizzleCreditLedger } = await import("@wopr-network/platform-core/credits/credit-ledger");
+        const { Credit } = await import("@wopr-network/platform-core/credits/credit");
+        const creditLedger = new DrizzleCreditLedger(db);
+        setCreditLedger(creditLedger);
+        logger.info("Credit ledger initialized");
+
         // Initialize BetterAuth (sessions, signup, login)
         const { initBetterAuth, runAuthMigrations } = await import("@wopr-network/platform-core/auth/better-auth");
-        initBetterAuth({ pool, db });
+        const SIGNUP_GRANT_CENTS = 500; // $5 welcome credits
+        initBetterAuth({
+          pool,
+          db,
+          onUserCreated: async (userId, userName) => {
+            try {
+              await creditLedger.credit(
+                userId, // personal tenant = userId
+                Credit.fromCents(SIGNUP_GRANT_CENTS),
+                "signup_grant",
+                `Welcome credits for ${userName}`,
+              );
+              logger.info(`Granted $${SIGNUP_GRANT_CENTS / 100} welcome credits to user ${userId}`);
+            } catch (err) {
+              logger.error("Failed to grant signup credits:", err);
+            }
+          },
+        });
         try {
           await runAuthMigrations();
         } catch (authMigErr) {
@@ -43,12 +67,6 @@ serve(
           });
         }
         logger.info("BetterAuth initialized");
-
-        // Wire credit ledger (billing gate uses this)
-        const { DrizzleCreditLedger } = await import("@wopr-network/platform-core/credits/credit-ledger");
-        const creditLedger = new DrizzleCreditLedger(db);
-        setCreditLedger(creditLedger);
-        logger.info("Credit ledger initialized");
 
         // Wire user role repo (admin auth session check)
         const { DrizzleUserRoleRepository } = await import("@wopr-network/platform-core/auth");
