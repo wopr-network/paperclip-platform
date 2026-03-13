@@ -71,10 +71,10 @@ services:
       retries: 5
       start_period: 15s
 
-  # --- Dashboard (platform-ui-core with Paperclip branding) ---
+  # --- Dashboard (paperclip-platform-ui thin shell on platform-ui-core) ---
   dashboard:
     build:
-      context: ../platform-ui-core
+      context: ../paperclip-platform-ui
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:3200
