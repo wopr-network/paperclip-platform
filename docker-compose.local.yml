@@ -30,7 +30,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paperclip-local}
       POSTGRES_DB: paperclip_platform
       # Create extra databases for nbxplorer + btcpayserver on first startup
-      POSTGRES_MULTIPLE_DATABASES: nbxplorer,btcpayserver
+      POSTGRES_MULTIPLE_DATABASES: nbxplorer,btcpayserver,paperclip_seed
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./scripts/create-multiple-databases.sh:/docker-entrypoint-initdb.d/create-multiple-databases.sh:ro
@@ -194,7 +194,7 @@ services:
       NODE_ENV: production
       WOPR_PROVISION_SECRET: ${PROVISION_SECRET:-local-dev-secret-change-me}
       WOPR_GATEWAY_URL: ${GATEWAY_URL:-https://api.wopr.network/v1}
-      PAPERCLIP_DEPLOYMENT_MODE: authenticated
+      PAPERCLIP_DEPLOYMENT_MODE: hosted_proxy
       PAPERCLIP_DEPLOYMENT_EXPOSURE: private
       BETTER_AUTH_SECRET: local-seed-secret-not-for-production
       PAPERCLIP_MIGRATION_AUTO_APPLY: "true"
