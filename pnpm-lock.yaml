@@ -15,8 +15,8 @@ importers:
         specifier: ^11.12.0
         version: 11.12.0(typescript@5.9.3)
       '@wopr-network/platform-core':
-        specifier: ^1.24.0
-        version: 1.24.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)
+        specifier: ^1.25.0
+        version: 1.25.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)
       '@wopr-network/provision-client':
         specifier: ^1.0.0
         version: 1.0.0(hono@4.12.8)
@@ -968,8 +968,8 @@ packages:
   '@vitest/utils@4.1.0':
     resolution: {integrity: sha512-XfPXT6a8TZY3dcGY8EdwsBulFCIw+BeeX0RZn2x/BtiY/75YGh8FeWGG8QISN/WhaqSrE2OrlDgtF8q5uhOTmw==}
 
-  '@wopr-network/platform-core@1.24.0':
-    resolution: {integrity: sha512-6iqyjF/Ti8WJc8lQxa8v7r82uRFG/Vzax27AOdmYmP0rjYuFc4ZmuFxl8SzkjO4J6fCc8A/E2njpcNXNMrKMNg==}
+  '@wopr-network/platform-core@1.25.0':
+    resolution: {integrity: sha512-KP0+OrY4x9b2urHwsGnG7TM3+h2dg1yMiBi+nK74mRzsw32aiC66eYB2sj3B1WqTEcCYIGMpiKwCd2wzTTNCTg==}
     peerDependencies:
       '@trpc/server': '>=11'
       better-auth: '>=1.5'
@@ -2565,7 +2565,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@wopr-network/platform-core@1.24.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)':
+  '@wopr-network/platform-core@1.25.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)':
     dependencies:
       '@noble/hashes': 2.0.1
       '@scure/base': 2.0.0

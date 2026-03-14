@@ -1,10 +1,20 @@
 import { serve } from "@hono/node-server";
 import type { ILedger } from "@wopr-network/platform-core/credits";
+import type { FleetUpdaterHandle } from "@wopr-network/platform-core/fleet";
+import { initFleetUpdater, setRolloutOrchestrator, setVolumeSnapshotManager } from "@wopr-network/platform-core/fleet";
 import { app } from "./app.js";
 import { getConfig } from "./config.js";
 import { startHealthMonitor, stopHealthMonitor } from "./fleet/health-monitor.js";
 import { hydrateRoutes } from "./fleet/hydrate.js";
-import { getProxyManager, setCreditLedger, setServiceKeyRepo, setUserRoleRepo } from "./fleet/services.js";
+import {
+  getDocker,
+  getFleetManager,
+  getProfileStore,
+  getProxyManager,
+  setCreditLedger,
+  setServiceKeyRepo,
+  setUserRoleRepo,
+} from "./fleet/services.js";
 import { logger } from "./log.js";
 
 // ---------------------------------------------------------------------------
@@ -18,6 +28,8 @@ import { logger } from "./log.js";
 //
 // Fix: complete all route-adding work before calling serve().
 // ---------------------------------------------------------------------------
+
+let fleetUpdaterHandle: FleetUpdaterHandle | null = null;
 
 async function main() {
   const config = getConfig();
@@ -122,6 +134,36 @@ async function main() {
 
       // Start periodic health checks
       startHealthMonitor();
+
+      // Start fleet auto-update pipeline (ImagePoller → RolloutOrchestrator → ContainerUpdater)
+      try {
+        const docker = getDocker();
+        const fleet = getFleetManager();
+        const profileStore = getProfileStore();
+        // ProfileStore implements IProfileStore; adapt to IBotProfileRepository
+        // by wrapping save() to return the profile (IBotProfileRepository.save returns BotProfile)
+        const profileRepo = {
+          get: (id: string) => profileStore.get(id),
+          list: () => profileStore.list(),
+          delete: (id: string) => profileStore.delete(id),
+          save: async (profile: import("@wopr-network/platform-core/fleet").BotProfile) => {
+            await profileStore.save(profile);
+            return profile;
+          },
+        };
+        fleetUpdaterHandle = initFleetUpdater(docker, fleet, profileStore, profileRepo, {
+          strategy: "rolling-wave",
+          snapshotDir: process.env.FLEET_SNAPSHOT_DIR || `${config.FLEET_DATA_DIR}/snapshots`,
+          onRolloutComplete: (result) => logger.info("Fleet rollout complete", result),
+        });
+        setVolumeSnapshotManager(fleetUpdaterHandle.snapshotManager);
+        setRolloutOrchestrator(fleetUpdaterHandle.orchestrator);
+        logger.info("Fleet auto-update pipeline started");
+      } catch (err) {
+        logger.warn("Fleet auto-update pipeline failed to start", {
+          error: (err as Error).message,
+        });
+      }
     },
   );
 }
@@ -139,6 +181,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
     logger.info(`Received ${signal}, shutting down`);
     stopHealthMonitor();
+    if (fleetUpdaterHandle) {
+      fleetUpdaterHandle.stop().catch(() => {});
+    }
     getProxyManager()
       .stop()
       .catch(() => {});
