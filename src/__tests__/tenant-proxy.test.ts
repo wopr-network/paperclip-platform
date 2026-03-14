@@ -52,13 +52,32 @@ describe("buildUpstreamHeaders", () => {
       "x-request-id": "req-123",
     });
 
-    const result = buildUpstreamHeaders(incoming, "user-1", "alice");
+    const result = buildUpstreamHeaders(incoming, { id: "user-1", email: "alice@test.com", name: "Alice" }, "alice");
 
     expect(result.get("content-type")).toBe("application/json");
     expect(result.get("x-request-id")).toBe("req-123");
     expect(result.get("x-paperclip-user-id")).toBe("user-1");
     expect(result.get("x-paperclip-tenant")).toBe("alice");
+    expect(result.get("x-paperclip-user-email")).toBe("alice@test.com");
+    expect(result.get("x-paperclip-user-name")).toBe("Alice");
     // Authorization must NOT be forwarded
     expect(result.get("authorization")).toBeNull();
+  });
+
+  it("does not inject x-paperclip-* headers from incoming request (anti-spoofing)", () => {
+    const incoming = new Headers({
+      "content-type": "text/plain",
+      "x-paperclip-user-id": "spoofed-admin",
+      "x-paperclip-tenant": "spoofed-tenant",
+      "x-paperclip-user-email": "evil@hacker.com",
+      "x-paperclip-user-name": "Evil Hacker",
+    });
+
+    const result = buildUpstreamHeaders(incoming, { id: "real-user" }, "real-tenant");
+
+    expect(result.get("x-paperclip-user-id")).toBe("real-user");
+    expect(result.get("x-paperclip-tenant")).toBe("real-tenant");
+    expect(result.get("x-paperclip-user-email")).toBeNull();
+    expect(result.get("x-paperclip-user-name")).toBeNull();
   });
 });

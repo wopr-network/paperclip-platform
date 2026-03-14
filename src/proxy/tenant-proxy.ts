@@ -11,7 +11,13 @@ const RESERVED_SUBDOMAINS = new Set(["app", "api", "staging", "www", "mail", "ad
 /** DNS label rules (RFC 1123). */
 const SUBDOMAIN_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
-/** Headers safe to forward to upstream Paperclip containers. */
+/**
+ * Headers safe to forward to upstream Paperclip containers.
+ *
+ * This is an allowlist — only these headers are copied from the incoming
+ * request. All x-paperclip-* headers are injected server-side after auth
+ * resolution, preventing client-side spoofing.
+ */
 const FORWARDED_HEADERS = [
   "content-type",
   "accept",
@@ -46,8 +52,21 @@ export function extractTenantSubdomain(host: string): string | null {
   return subdomain;
 }
 
-/** Build sanitized headers for upstream requests. */
-export function buildUpstreamHeaders(incoming: Headers, userId: string, tenantSubdomain: string): Headers {
+/** Resolved user identity for upstream header injection. */
+interface ProxyUserInfo {
+  id: string;
+  email?: string;
+  name?: string;
+}
+
+/**
+ * Build sanitized headers for upstream requests.
+ *
+ * Only allowlisted headers are forwarded. All x-paperclip-* headers are
+ * injected server-side from the authenticated session — never copied from
+ * the incoming request — to prevent spoofing.
+ */
+export function buildUpstreamHeaders(incoming: Headers, user: ProxyUserInfo, tenantSubdomain: string): Headers {
   const headers = new Headers();
   for (const key of FORWARDED_HEADERS) {
     const val = incoming.get(key);
@@ -56,19 +75,24 @@ export function buildUpstreamHeaders(incoming: Headers, userId: string, tenantSu
   // Forward original Host so Paperclip's hostname allowlist doesn't reject the request
   const host = incoming.get("host");
   if (host) headers.set("host", host);
-  headers.set("x-paperclip-user-id", userId);
+  headers.set("x-paperclip-user-id", user.id);
   headers.set("x-paperclip-tenant", tenantSubdomain);
+  if (user.email) headers.set("x-paperclip-user-email", user.email);
+  if (user.name) headers.set("x-paperclip-user-name", user.name);
   return headers;
 }
 
 /**
- * Resolve the authenticated user ID from the Hono context.
+ * Resolve the authenticated user from the Hono context.
  * Falls back to BetterAuth session cookie resolution.
+ * Returns user info including email/name when available from the session.
  */
-async function resolveUserId(c: Parameters<MiddlewareHandler>[0]): Promise<string | undefined> {
+async function resolveUser(c: Parameters<MiddlewareHandler>[0]): Promise<ProxyUserInfo | undefined> {
   try {
-    const contextUser = (c.get("user") as { id: string } | undefined)?.id;
-    if (contextUser) return contextUser;
+    const contextUser = c.get("user") as { id: string; email?: string; name?: string } | undefined;
+    if (contextUser?.id) {
+      return { id: contextUser.id, email: contextUser.email, name: contextUser.name };
+    }
   } catch {
     // Variable not set — fall through
   }
@@ -77,7 +101,10 @@ async function resolveUserId(c: Parameters<MiddlewareHandler>[0]): Promise<strin
     const { getAuth } = await import("@wopr-network/platform-core/auth/better-auth");
     const auth = getAuth();
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (session?.user) return (session.user as { id: string }).id;
+    if (session?.user) {
+      const u = session.user as { id: string; email?: string; name?: string };
+      return { id: u.id, email: u.email, name: u.name };
+    }
   } catch (err) {
     logger.warn("Session resolution failed for tenant proxy request", { err });
   }
@@ -101,8 +128,8 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
   if (!subdomain) return next();
 
   // Authenticate — reject unauthenticated requests
-  const userId = await resolveUserId(c);
-  if (!userId) {
+  const user = await resolveUser(c);
+  if (!user) {
     return c.json({ error: "Authentication required" }, 401);
   }
 
@@ -113,7 +140,7 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
     const profiles = await store.list();
     const profile = profiles.find((p) => p.name === subdomain);
     if (profile) {
-      const hasAccess = await validateTenantAccess(userId, profile.tenantId, orgMemberRepo);
+      const hasAccess = await validateTenantAccess(user.id, profile.tenantId, orgMemberRepo);
       if (!hasAccess) {
         return c.json({ error: "Forbidden: not a member of this tenant" }, 403);
       }
@@ -128,7 +155,7 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
 
   const url = new URL(c.req.url);
   const targetUrl = `${upstream}${url.pathname}${url.search}`;
-  const upstreamHeaders = buildUpstreamHeaders(c.req.raw.headers, userId, subdomain);
+  const upstreamHeaders = buildUpstreamHeaders(c.req.raw.headers, user, subdomain);
 
   let response: Response;
   try {
