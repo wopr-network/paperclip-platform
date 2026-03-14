@@ -8,7 +8,14 @@
 import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
 import type { ICryptoChargeRepository, IPaymentProcessor } from "@wopr-network/platform-core/billing";
-import { type BTCPayClient, createCryptoCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
+import {
+  type BTCPayClient,
+  createCryptoCheckout,
+  createStablecoinCheckout,
+  MIN_PAYMENT_USD,
+  MIN_STABLECOIN_USD,
+  type StablecoinCheckoutDeps,
+} from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import {
@@ -138,6 +145,7 @@ export interface BillingRouterDeps {
   affiliateRepo: IAffiliateRepository;
   cryptoClient?: BTCPayClient;
   cryptoChargeRepo?: ICryptoChargeRepository;
+  evmXpub?: string;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -149,15 +157,18 @@ export function setBillingRouterDeps(deps: BillingRouterDeps): void {
 }
 
 /** Wire crypto deps after initial billing setup (BTCPay may init independently of Stripe). */
-export function setCryptoBillingDeps(cryptoClient: BTCPayClient, cryptoChargeRepo: ICryptoChargeRepository): void {
+export function setCryptoBillingDeps(
+  cryptoClient: BTCPayClient,
+  cryptoChargeRepo: ICryptoChargeRepository,
+  evmXpub?: string,
+): void {
   if (!_deps) {
-    // Stripe not configured — create minimal deps with crypto only.
-    // The cryptoCheckout procedure will work; Stripe-dependent procedures will throw "Billing not initialized".
-    _deps = { cryptoClient, cryptoChargeRepo } as BillingRouterDeps;
+    _deps = { cryptoClient, cryptoChargeRepo, evmXpub } as BillingRouterDeps;
     return;
   }
   _deps.cryptoClient = cryptoClient;
   _deps.cryptoChargeRepo = cryptoChargeRepo;
+  if (evmXpub) _deps.evmXpub = evmXpub;
 }
 
 function deps(): BillingRouterDeps {
@@ -289,6 +300,38 @@ export const billingRouter = router({
         amountUsd: input.amountUsd,
       });
       return { url: result.url, referenceId: result.referenceId };
+    }),
+
+  /** Create a stablecoin payment session (USDC/USDT/DAI). */
+  stablecoinCheckout: tenantProcedure
+    .input(
+      z.object({
+        amountUsd: z.number().min(MIN_STABLECOIN_USD).max(10000),
+        token: z.enum(["USDC", "USDT", "DAI"]),
+        chain: z.enum(["base", "ethereum", "arbitrum", "polygon"]),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const tenant = ctx.tenantId;
+      const { cryptoChargeRepo, evmXpub } = deps();
+      if (!cryptoChargeRepo || !evmXpub) {
+        throw new TRPCError({
+          code: "NOT_IMPLEMENTED",
+          message: "Stablecoin payments not configured",
+        });
+      }
+      // Token/chain types widen after platform-core publishes Phases 2+3.
+      // Cast is safe — zod validates the input before this runs.
+      const result = await createStablecoinCheckout(
+        { chargeStore: cryptoChargeRepo, xpub: evmXpub } as StablecoinCheckoutDeps,
+        {
+          tenant,
+          amountUsd: input.amountUsd,
+          token: input.token as "USDC",
+          chain: input.chain as "base",
+        },
+      );
+      return result;
     }),
 
   /** Create a Stripe Customer Portal session. */
