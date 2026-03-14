@@ -7,8 +7,8 @@
 
 import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
-import type { IPaymentProcessor, PayRamChargeRepository } from "@wopr-network/platform-core/billing";
-import { createPayRamCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
+import type { ICryptoChargeRepository, IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import { type BTCPayClient, createCryptoCheckout, MIN_PAYMENT_USD } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import {
@@ -27,7 +27,6 @@ import type { CreditPriceMap, ITenantCustomerRepository } from "@wopr-network/pl
 import type { PromotionEngine } from "@wopr-network/platform-core/monetization/promotions/engine";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import { protectedProcedure, publicProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
-import type { Payram } from "payram";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -137,8 +136,8 @@ export interface BillingRouterDeps {
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
-  payramClient?: Payram;
-  payramChargeRepo?: PayRamChargeRepository;
+  cryptoClient?: BTCPayClient;
+  cryptoChargeRepo?: ICryptoChargeRepository;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -257,7 +256,7 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
-  /** Create a PayRam crypto payment session. */
+  /** Create a BTCPay crypto payment session. */
   cryptoCheckout: tenantProcedure
     .input(
       z.object({
@@ -266,14 +265,14 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { payramClient, payramChargeRepo } = deps();
-      if (!payramClient || !payramChargeRepo) {
+      const { cryptoClient, cryptoChargeRepo } = deps();
+      if (!cryptoClient || !cryptoChargeRepo) {
         throw new TRPCError({
           code: "NOT_IMPLEMENTED",
           message: "Crypto payments not configured",
         });
       }
-      const result = await createPayRamCheckout(payramClient, payramChargeRepo, {
+      const result = await createCryptoCheckout(cryptoClient, cryptoChargeRepo, {
         tenant,
         amountUsd: input.amountUsd,
       });
