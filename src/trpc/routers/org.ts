@@ -63,13 +63,11 @@ export const orgRouter = router({
   /** List organizations the authenticated user belongs to (excludes personal tenant). */
   listMyOrganizations: protectedProcedure.query(async ({ ctx }) => {
     const { orgService } = deps();
-    // TODO: Switch to orgService.listOrgsForUser() once platform-core >= 1.16.0 is published
-    // For now, listOrgsForUser may not exist on the installed OrgService version.
-    // Use it if available, otherwise fall back to empty array.
+    // TODO: Switch to direct call once platform-core >= 1.16.0 is published
     if ("listOrgsForUser" in orgService && typeof orgService.listOrgsForUser === "function") {
-      return orgService.listOrgsForUser(ctx.user.id);
+      return orgService.listOrgsForUser(ctx.user.id) as Promise<Array<{ orgId: string; role: string }>>;
     }
-    return [];
+    return [] as Array<{ orgId: string; role: string }>;
   }),
 
   /** Accept an organization invite by token. */
@@ -82,7 +80,8 @@ export const orgRouter = router({
         message: "acceptInvite not available — upgrade platform-core",
       });
     }
-    const { orgId, role } = await orgService.acceptInvite(input.token, ctx.user.id);
+    const result = (await orgService.acceptInvite(input.token, ctx.user.id)) as { orgId: string; role: string };
+    const { orgId, role } = result;
     // TODO: Call MemberProvisionClient.addMember() to sync the new member
     // to the Paperclip instance once instance URL resolution is wired.
     return { orgId, role };

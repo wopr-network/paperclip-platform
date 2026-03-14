@@ -20,6 +20,7 @@ export class MemberProvisionClient {
     },
   ): Promise<void> {
     const res = await fetch(`${instanceUrl}/internal/members/add`, {
+      signal: AbortSignal.timeout(30_000),
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -42,6 +43,7 @@ export class MemberProvisionClient {
     },
   ): Promise<void> {
     const res = await fetch(`${instanceUrl}/internal/members/remove`, {
+      signal: AbortSignal.timeout(30_000),
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -65,6 +67,7 @@ export class MemberProvisionClient {
     },
   ): Promise<void> {
     const res = await fetch(`${instanceUrl}/internal/members/change-role`, {
+      signal: AbortSignal.timeout(30_000),
       method: "POST",
       headers: {
         "Content-Type": "application/json",
