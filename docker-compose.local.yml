@@ -61,6 +61,13 @@ services:
       # BTCPay env vars come from .env.local (BTCPAY_API_KEY, BTCPAY_STORE_ID, etc.)
       # BTCPAY_BASE_URL is overridden here because the container uses the docker network name
       BTCPAY_BASE_URL: http://btcpay:23002
+      # Stablecoin watcher connects to Anvil (Base fork) for local dev
+      EVM_RPC_BASE: http://anvil:8545
+      # BTC watcher connects to bitcoind directly (regtest)
+      BITCOIND_RPC_URL: http://bitcoind:18443
+      BITCOIND_RPC_USER: btcpay
+      BITCOIND_RPC_PASSWORD: btcpay-local
+      BITCOIND_NETWORK: regtest
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - fleet-data:/data/fleet
@@ -183,6 +190,20 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  # --- Anvil (Base mainnet fork for stablecoin testing) ---
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    entrypoint: ["anvil"]
+    command: >
+      --fork-url https://mainnet.base.org
+      --host 0.0.0.0
+      --port 8545
+      --chain-id 8453
+    ports:
+      - "8545:8545"
+    networks:
+      - paperclip
 
   # --- Seed Paperclip container (for testing provision flow) ---
   seed:

@@ -231,7 +231,15 @@ async function wireTrpcDeps(
     });
 
     // Wire billing deps into org router (processor, meter, priceMap)
-    setOrgRouterDeps({ orgService, authUserRepo, creditLedger, meterAggregator, processor, priceMap, provisionSecret: getConfig().PROVISION_SECRET });
+    setOrgRouterDeps({
+      orgService,
+      authUserRepo,
+      creditLedger,
+      meterAggregator,
+      processor,
+      priceMap,
+      provisionSecret: getConfig().PROVISION_SECRET,
+    });
     logger.info("Billing tRPC router wired (Stripe + all repositories)");
   } else {
     logger.warn("STRIPE_SECRET_KEY not set — billing tRPC procedures will fail until configured");

@@ -84,11 +84,13 @@ export const orgRouter = router({
         const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "";
         const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
         const client = new MemberProvisionClient(provisionSecret);
-        await client.addMember(instance.instanceUrl, {
-          companyId: instance.companyId,
-          user: { id: ctx.user.id, email, name },
-          role,
-        }).catch((err) => logger.warn("Provision addMember failed (non-blocking)", { orgId, err }));
+        await client
+          .addMember(instance.instanceUrl, {
+            companyId: instance.companyId,
+            user: { id: ctx.user.id, email, name },
+            role,
+          })
+          .catch((err) => logger.warn("Provision addMember failed (non-blocking)", { orgId, err }));
       }
     }
 
@@ -185,11 +187,13 @@ export const orgRouter = router({
         const instance = await resolveOrgInstance(input.orgId);
         if (instance) {
           const client = new MemberProvisionClient(provisionSecret);
-          await client.changeRole(instance.instanceUrl, {
-            companyId: instance.companyId,
-            userId: input.userId,
-            role: input.role,
-          }).catch((err) => logger.warn("Provision changeRole failed (non-blocking)", { orgId: input.orgId, err }));
+          await client
+            .changeRole(instance.instanceUrl, {
+              companyId: instance.companyId,
+              userId: input.userId,
+              role: input.role,
+            })
+            .catch((err) => logger.warn("Provision changeRole failed (non-blocking)", { orgId: input.orgId, err }));
         }
       }
 
@@ -208,10 +212,12 @@ export const orgRouter = router({
         const instance = await resolveOrgInstance(input.orgId);
         if (instance) {
           const client = new MemberProvisionClient(provisionSecret);
-          await client.removeMember(instance.instanceUrl, {
-            companyId: instance.companyId,
-            userId: input.userId,
-          }).catch((err) => logger.warn("Provision removeMember failed (non-blocking)", { orgId: input.orgId, err }));
+          await client
+            .removeMember(instance.instanceUrl, {
+              companyId: instance.companyId,
+              userId: input.userId,
+            })
+            .catch((err) => logger.warn("Provision removeMember failed (non-blocking)", { orgId: input.orgId, err }));
         }
       }
 
