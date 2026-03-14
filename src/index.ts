@@ -331,10 +331,12 @@ async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").Dr
   // Wire webhook route deps (for POST /api/webhooks/crypto)
   setCryptoWebhookDeps({ chargeStore: cryptoChargeRepo, creditLedger, replayGuard }, webhookSecret);
 
-  // Wire crypto client into billing tRPC router (for cryptoCheckout + stablecoinCheckout)
+  // Wire crypto client into billing tRPC router (for cryptoCheckout + stablecoinCheckout + ethCheckout)
   const evmXpub = process.env.EVM_XPUB;
-  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo, evmXpub);
+  const evmRpcBase = process.env.EVM_RPC_BASE;
+  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo, evmXpub, evmRpcBase);
 
   logger.info("BTCPay crypto payments configured (webhook + checkout)");
-  if (evmXpub) logger.info("Stablecoin payments configured (EVM_XPUB set)");
+  if (evmXpub) logger.info("Stablecoin + ETH payments configured (EVM_XPUB set)");
+  if (evmRpcBase) logger.info("Chainlink price oracle configured (EVM_RPC_BASE set)");
 }
