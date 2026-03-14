@@ -140,6 +140,8 @@ services:
         rpcallowip=0.0.0.0/0
         rpcbind=0.0.0.0
         fallbackfee=0.0002
+    ports:
+      - "18443:18443"
     volumes:
       - bitcoin-data:/data
     networks:
