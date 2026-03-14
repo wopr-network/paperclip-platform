@@ -363,23 +363,23 @@ async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").Dr
     return;
   }
 
-  const { BTCPayClient, DrizzleCryptoChargeRepository, DrizzleWebhookSeenRepository } = await import(
-    "@wopr-network/platform-core/billing"
-  );
+  const { BTCPayClient, DrizzleCryptoChargeRepository, DrizzlePaymentMethodStore, DrizzleWebhookSeenRepository } =
+    await import("@wopr-network/platform-core/billing");
   const { setCryptoWebhookDeps } = await import("./routes/crypto-webhook.js");
   const { setCryptoBillingDeps } = await import("./trpc/routers/billing.js");
 
   const cryptoClient = new BTCPayClient({ apiKey, baseUrl, storeId });
   const cryptoChargeRepo = new DrizzleCryptoChargeRepository(db);
   const replayGuard = new DrizzleWebhookSeenRepository(db);
+  const paymentMethodStore = new DrizzlePaymentMethodStore(db);
 
   // Wire webhook route deps (for POST /api/webhooks/crypto)
   setCryptoWebhookDeps({ chargeStore: cryptoChargeRepo, creditLedger, replayGuard }, webhookSecret);
 
-  // Wire crypto client into billing tRPC router (for cryptoCheckout + stablecoinCheckout + ethCheckout)
+  // Wire unified checkout + payment method registry
   const evmXpub = process.env.EVM_XPUB;
   const evmRpcBase = process.env.EVM_RPC_BASE;
-  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo, evmXpub, evmRpcBase);
+  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo, evmXpub, evmRpcBase, paymentMethodStore);
 
   logger.info("BTCPay crypto payments configured (webhook + checkout)");
   if (evmXpub) logger.info("Stablecoin + ETH payments configured (EVM_XPUB set)");

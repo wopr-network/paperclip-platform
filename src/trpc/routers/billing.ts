@@ -7,19 +7,14 @@
 
 import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
-import type { ICryptoChargeRepository, IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import type { ICryptoChargeRepository, IPaymentMethodStore, IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import {
   type BTCPayClient,
   ChainlinkOracle,
-  createCryptoCheckout,
-  createEthCheckout,
   createRpcCaller,
-  createStablecoinCheckout,
+  createUnifiedCheckout,
   type IPriceOracle,
-  MIN_ETH_USD,
-  MIN_PAYMENT_USD,
-  MIN_STABLECOIN_USD,
-  type StablecoinCheckoutDeps,
+  MIN_CHECKOUT_USD,
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
@@ -152,6 +147,7 @@ export interface BillingRouterDeps {
   cryptoChargeRepo?: ICryptoChargeRepository;
   evmXpub?: string;
   priceOracle?: IPriceOracle;
+  paymentMethodStore?: IPaymentMethodStore;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -168,6 +164,7 @@ export function setCryptoBillingDeps(
   cryptoChargeRepo: ICryptoChargeRepository,
   evmXpub?: string,
   evmRpcUrl?: string,
+  paymentMethodStore?: IPaymentMethodStore,
 ): void {
   // Create price oracle if we have an RPC URL (Chainlink on-chain feeds)
   let priceOracle: IPriceOracle | undefined;
@@ -177,13 +174,14 @@ export function setCryptoBillingDeps(
   }
 
   if (!_deps) {
-    _deps = { cryptoClient, cryptoChargeRepo, evmXpub, priceOracle } as BillingRouterDeps;
+    _deps = { cryptoClient, cryptoChargeRepo, evmXpub, priceOracle, paymentMethodStore } as BillingRouterDeps;
     return;
   }
   _deps.cryptoClient = cryptoClient;
   _deps.cryptoChargeRepo = cryptoChargeRepo;
   if (evmXpub) _deps.evmXpub = evmXpub;
   if (priceOracle) _deps.priceOracle = priceOracle;
+  if (paymentMethodStore) _deps.paymentMethodStore = paymentMethodStore;
 }
 
 function deps(): BillingRouterDeps {
@@ -294,83 +292,73 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
-  /** Create a BTCPay crypto payment session. */
-  cryptoCheckout: tenantProcedure
+  /** Unified crypto checkout — works with any enabled payment method. */
+  checkout: tenantProcedure
     .input(
       z.object({
-        amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
+        methodId: z.string().min(1).max(64),
+        amountUsd: z.number().min(MIN_CHECKOUT_USD).max(10000),
       }),
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
-      const { cryptoClient, cryptoChargeRepo } = deps();
-      if (!cryptoClient || !cryptoChargeRepo) {
-        throw new TRPCError({
-          code: "NOT_IMPLEMENTED",
-          message: "Crypto payments not configured",
-        });
+      const { cryptoChargeRepo, evmXpub, priceOracle, paymentMethodStore } = deps();
+      if (!cryptoChargeRepo || !evmXpub || !priceOracle || !paymentMethodStore) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
       }
-      const result = await createCryptoCheckout(cryptoClient, cryptoChargeRepo, {
+      const method = await paymentMethodStore.getById(input.methodId);
+      if (!method || !method.enabled) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Payment method ${input.methodId} not available` });
+      }
+      return createUnifiedCheckout({ chargeStore: cryptoChargeRepo, oracle: priceOracle, evmXpub }, method, {
         tenant,
         amountUsd: input.amountUsd,
       });
-      return { url: result.url, referenceId: result.referenceId };
     }),
 
-  /** Create a stablecoin payment session (USDC/USDT/DAI). */
-  stablecoinCheckout: tenantProcedure
+  /** Admin: list all payment methods (including disabled). */
+  adminListPaymentMethods: protectedProcedure.query(async () => {
+    const { paymentMethodStore } = deps();
+    if (!paymentMethodStore) return [];
+    return paymentMethodStore.listAll();
+  }),
+
+  /** Admin: upsert a payment method. */
+  adminUpsertPaymentMethod: protectedProcedure
     .input(
       z.object({
-        amountUsd: z.number().min(MIN_STABLECOIN_USD).max(10000),
-        token: z.enum(["USDC", "USDT", "DAI"]),
-        chain: z.enum(["base", "ethereum", "arbitrum", "polygon"]),
+        id: z.string().min(1).max(64),
+        type: z.string().min(1),
+        token: z.string().min(1),
+        chain: z.string().min(1),
+        contractAddress: z.string().nullable(),
+        decimals: z.number().int().min(0).max(18),
+        displayName: z.string().min(1),
+        enabled: z.boolean(),
+        displayOrder: z.number().int().min(0),
+        rpcUrl: z.string().nullable(),
+        confirmations: z.number().int().min(1),
       }),
     )
-    .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId;
-      const { cryptoChargeRepo, evmXpub } = deps();
-      if (!cryptoChargeRepo || !evmXpub) {
-        throw new TRPCError({
-          code: "NOT_IMPLEMENTED",
-          message: "Stablecoin payments not configured",
-        });
+    .mutation(async ({ input }) => {
+      const { paymentMethodStore } = deps();
+      if (!paymentMethodStore) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment method store not configured" });
       }
-      // Token/chain types widen after platform-core publishes Phases 2+3.
-      // Cast is safe — zod validates the input before this runs.
-      const result = await createStablecoinCheckout(
-        { chargeStore: cryptoChargeRepo, xpub: evmXpub } as StablecoinCheckoutDeps,
-        {
-          tenant,
-          amountUsd: input.amountUsd,
-          token: input.token as "USDC",
-          chain: input.chain as "base",
-        },
-      );
-      return result;
+      await paymentMethodStore.upsert(input);
+      return { ok: true };
     }),
 
-  /** Create a native ETH payment session (oracle-priced). */
-  ethCheckout: tenantProcedure
-    .input(
-      z.object({
-        amountUsd: z.number().min(MIN_ETH_USD).max(10000),
-        chain: z.enum(["base", "ethereum", "arbitrum", "polygon"]),
-      }),
-    )
-    .mutation(async ({ input, ctx }) => {
-      const tenant = ctx.tenantId;
-      const { cryptoChargeRepo, evmXpub, priceOracle } = deps();
-      if (!cryptoChargeRepo || !evmXpub || !priceOracle) {
-        throw new TRPCError({
-          code: "NOT_IMPLEMENTED",
-          message: "ETH payments not configured",
-        });
+  /** Admin: toggle a payment method on/off. */
+  adminTogglePaymentMethod: protectedProcedure
+    .input(z.object({ id: z.string().min(1), enabled: z.boolean() }))
+    .mutation(async ({ input }) => {
+      const { paymentMethodStore } = deps();
+      if (!paymentMethodStore) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment method store not configured" });
       }
-      const result = await createEthCheckout(
-        { chargeStore: cryptoChargeRepo, oracle: priceOracle, xpub: evmXpub },
-        { tenant, amountUsd: input.amountUsd, chain: input.chain as "base" },
-      );
-      return result;
+      await paymentMethodStore.setEnabled(input.id, input.enabled);
+      return { ok: true };
     }),
 
   /** Create a Stripe Customer Portal session. */
