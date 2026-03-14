@@ -18,6 +18,7 @@ import {
   getCreditLedger,
   getDocker,
   getNodeRegistry,
+  getOrgMemberRepo,
   getPlacementStrategy,
   getProfileStore,
   getServiceKeyRepo,
@@ -39,6 +40,21 @@ function getFleetForInstance(instanceId: string) {
 /** Derive tenantId from context — personal org uses userId as tenantId. */
 function tenantFromCtx(ctx: { user: { id: string }; tenantId: string | undefined }): string {
   return ctx.tenantId ?? ctx.user.id;
+}
+
+/**
+ * Assert the user is an admin or owner of the given org.
+ * When orgId is not provided (personal tenant), this is a no-op.
+ * TODO: Replace with orgAdminProcedure import once platform-core >= 1.16.0 is published.
+ */
+async function assertOrgAdmin(orgId: string | undefined, userId: string): Promise<void> {
+  if (!orgId) return; // personal tenant — no org role check needed
+  const repo = getOrgMemberRepo();
+  if (!repo) return; // org repo not wired — skip check (dev mode)
+  const member = await repo.findMember(orgId, userId);
+  if (!member || (member.role !== "owner" && member.role !== "admin")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Organization admin access required" });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +118,7 @@ export const fleetRouter = router({
     return { ...status, env: safeEnv };
   }),
 
-  /** Create a new Paperclip instance. */
+  /** Create a new Paperclip instance. Requires admin role when orgId is provided. */
   createInstance: protectedProcedure
     .input(
       z.object({
@@ -118,10 +134,12 @@ export const fleetRouter = router({
         image: z.string().optional(),
         description: z.string().optional(),
         env: z.record(z.string(), z.string()).optional(),
+        orgId: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const tenant = tenantFromCtx(ctx);
+      await assertOrgAdmin(input.orgId, ctx.user.id);
+      const tenant = input.orgId ?? tenantFromCtx(ctx);
       const config = getConfig();
 
       // Billing gate
@@ -329,16 +347,18 @@ export const fleetRouter = router({
       };
     }),
 
-  /** Control an instance: start, stop, restart, destroy. */
+  /** Control an instance: start, stop, restart, destroy. Requires admin role when orgId is provided. */
   controlInstance: protectedProcedure
     .input(
       z.object({
         id: z.string().min(1),
         action: z.enum(["start", "stop", "restart", "destroy"]),
+        orgId: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const tenant = tenantFromCtx(ctx);
+      await assertOrgAdmin(input.orgId, ctx.user.id);
+      const tenant = input.orgId ?? tenantFromCtx(ctx);
       const store = getProfileStore();
       const profile = await store.get(input.id);
       if (!profile) {
