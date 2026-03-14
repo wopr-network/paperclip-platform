@@ -10,8 +10,8 @@ if [ -n "${POSTGRES_MULTIPLE_DATABASES:-}" ]; then
   for db in $(echo "$POSTGRES_MULTIPLE_DATABASES" | tr ',' ' '); do
     echo "  Creating database '$db'"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
-      SELECT 'CREATE DATABASE $db OWNER $POSTGRES_USER'
-      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$db')\gexec
+      SELECT 'CREATE DATABASE "$(echo "$db" | sed 's/"/""/g')" OWNER "$(echo "$POSTGRES_USER" | sed 's/"/""/g')"'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$(echo "$db" | sed "s/'/''/g")')\gexec
 EOSQL
   done
   echo "Additional databases created."

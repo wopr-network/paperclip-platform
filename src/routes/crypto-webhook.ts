@@ -30,7 +30,7 @@ cryptoWebhookRoutes.post("/", async (c) => {
   const rawBody = await c.req.text();
   const sig = c.req.header("BTCPAY-SIG");
 
-  if (!verifyCryptoWebhookSignature(rawBody, sig, _webhookSecret)) {
+  if (!sig || !verifyCryptoWebhookSignature(rawBody, sig, _webhookSecret)) {
     logger.warn("Crypto webhook signature verification failed");
     return c.json({ error: "Invalid signature" }, 401);
   }
