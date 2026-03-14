@@ -7,7 +7,11 @@
 
 import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
-import type { ICryptoChargeRepository, IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import type {
+  ICryptoChargeRepository,
+  IPaymentMethodStore,
+  IPaymentProcessor,
+} from "@wopr-network/platform-core/billing";
 import {
   type BTCPayClient,
   ChainlinkOracle,
@@ -152,6 +156,7 @@ export interface BillingRouterDeps {
   cryptoChargeRepo?: ICryptoChargeRepository;
   evmXpub?: string;
   priceOracle?: IPriceOracle;
+  paymentMethodStore?: IPaymentMethodStore;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -168,6 +173,7 @@ export function setCryptoBillingDeps(
   cryptoChargeRepo: ICryptoChargeRepository,
   evmXpub?: string,
   evmRpcUrl?: string,
+  paymentMethodStore?: IPaymentMethodStore,
 ): void {
   // Create price oracle if we have an RPC URL (Chainlink on-chain feeds)
   let priceOracle: IPriceOracle | undefined;
@@ -177,13 +183,14 @@ export function setCryptoBillingDeps(
   }
 
   if (!_deps) {
-    _deps = { cryptoClient, cryptoChargeRepo, evmXpub, priceOracle } as BillingRouterDeps;
+    _deps = { cryptoClient, cryptoChargeRepo, evmXpub, priceOracle, paymentMethodStore } as BillingRouterDeps;
     return;
   }
   _deps.cryptoClient = cryptoClient;
   _deps.cryptoChargeRepo = cryptoChargeRepo;
   if (evmXpub) _deps.evmXpub = evmXpub;
   if (priceOracle) _deps.priceOracle = priceOracle;
+  if (paymentMethodStore) _deps.paymentMethodStore = paymentMethodStore;
 }
 
 function deps(): BillingRouterDeps {
@@ -196,6 +203,22 @@ function deps(): BillingRouterDeps {
 // ---------------------------------------------------------------------------
 
 export const billingRouter = router({
+  /** List enabled payment methods (runtime-configured, no hardcoded tokens). */
+  supportedPaymentMethods: publicProcedure.query(async () => {
+    const { paymentMethodStore } = deps();
+    if (!paymentMethodStore) return [];
+    const methods = await paymentMethodStore.listEnabled();
+    return methods.map((m) => ({
+      id: m.id,
+      type: m.type,
+      token: m.token,
+      chain: m.chain,
+      displayName: m.displayName,
+      decimals: m.decimals,
+      displayOrder: m.displayOrder,
+    }));
+  }),
+
   /** Get credits balance for a tenant. Uses validated ctx.tenantId. */
   creditsBalance: tenantProcedure
     .input(z.object({ tenant: tenantIdSchema.optional() }).optional())
