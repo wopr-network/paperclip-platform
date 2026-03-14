@@ -10,10 +10,10 @@
 ##   3. Start:
 ##      docker compose -f docker-compose.local.yml up --build
 ##
-## Access:
-##   Dashboard:  http://app.localhost:8080
-##   API:        http://localhost:3200/health
-##   Tenant:     http://{subdomain}.localhost:8080
+## Access (requires /etc/hosts: 127.0.0.1 runpaperclip.com app.runpaperclip.com api.runpaperclip.com):
+##   Dashboard:  http://app.runpaperclip.com:8080
+##   API:        http://api.runpaperclip.com:8080/health
+##   Tenant:     http://{subdomain}.runpaperclip.com:8080
 ##   Caddy admin: http://localhost:2019
 ##   Postgres:   localhost:5433 (mapped from container 5432)
 ##

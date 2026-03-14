@@ -23,7 +23,6 @@ const FORWARDED_HEADERS = [
   "origin",
   "referer",
   "cookie",
-  "authorization",
 ];
 
 /**

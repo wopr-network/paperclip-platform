@@ -23,12 +23,11 @@ async function main() {
   const config = getConfig();
 
   // --- Database + Auth + Billing (when DATABASE_URL is set) ---
-  const { hasDatabase } = await import("./db/index.js");
-  if (hasDatabase()) {
+  const dbModule = await import("./db/index.js");
+  if (dbModule.hasDatabase()) {
     try {
-      const { getPool, getDb } = await import("./db/index.js");
-      const pool = getPool();
-      const db = getDb();
+      const pool = dbModule.getPool();
+      const db = dbModule.getDb();
 
       // Run platform-core Drizzle migrations
       const { runMigrations } = await import("./db/migrate.js");
@@ -77,10 +76,11 @@ async function main() {
       await wireTrpcDeps(db, pool, creditLedger);
       logger.info("tRPC router dependencies initialized");
     } catch (err) {
-      logger.error("Database/auth initialization failed", {
+      logger.error("Startup initialization failed (DB, auth, or gateway)", {
         error: (err as Error).message,
+        stack: (err as Error).stack,
       });
-      logger.warn("Running without database — billing checks and auth sessions disabled");
+      logger.warn("Running in degraded mode — billing, auth, and/or gateway routes may be unavailable");
     }
   } else {
     logger.warn("DATABASE_URL not set — running without database (billing checks skipped, no persistent sessions)");
@@ -124,7 +124,10 @@ async function main() {
 }
 
 main().catch((err) => {
-  logger.error("Fatal startup error", { error: (err as Error).message });
+  logger.error("Fatal startup error", {
+    error: (err as Error).message,
+    stack: (err as Error).stack,
+  });
   process.exit(1);
 });
 
