@@ -331,6 +331,12 @@ export const fleetRouter = router({
             agents: [{ name: "CEO", role: "ceo", title: "Chief Executive Officer" }],
           });
           logger.info(`Provisioned instance ${input.name}: tenantEntityId=${provisionResult.tenantEntityId}`);
+
+          // Persist Paperclip company ID in profile so member provisioning can resolve it
+          if (provisionResult.tenantEntityId) {
+            profile.env = { ...profile.env, PAPERCLIP_COMPANY_ID: provisionResult.tenantEntityId };
+            await store.save(profile);
+          }
         } catch (err) {
           logger.warn(`Provision call failed for ${input.name} (container is running but unconfigured)`, { err });
         }

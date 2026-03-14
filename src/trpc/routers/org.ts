@@ -15,6 +15,9 @@ import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
 import type { OrgService } from "@wopr-network/platform-core/tenancy";
 import { orgMemberProcedure, protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
+import { MemberProvisionClient } from "../../fleet/member-provision-client.js";
+import { resolveOrgInstance } from "../../fleet/org-instance-resolver.js";
+import { logger } from "../../log.js";
 
 // ---------------------------------------------------------------------------
 // Deps
@@ -27,6 +30,7 @@ export type OrgRouterDeps = {
   meterAggregator?: IMeterAggregator;
   processor?: IPaymentProcessor;
   priceMap?: CreditPriceMap;
+  provisionSecret?: string;
 };
 
 let _deps: OrgRouterDeps | null = null;
@@ -63,27 +67,31 @@ export const orgRouter = router({
   /** List organizations the authenticated user belongs to (excludes personal tenant). */
   listMyOrganizations: protectedProcedure.query(async ({ ctx }) => {
     const { orgService } = deps();
-    // TODO: Switch to direct call once platform-core >= 1.16.0 is published
-    if ("listOrgsForUser" in orgService && typeof orgService.listOrgsForUser === "function") {
-      return orgService.listOrgsForUser(ctx.user.id) as Promise<Array<{ orgId: string; role: string }>>;
-    }
-    return [] as Array<{ orgId: string; role: string }>;
+    return orgService.listOrgsForUser(ctx.user.id) as Promise<Array<{ orgId: string; role: string }>>;
   }),
 
   /** Accept an organization invite by token. */
   acceptInvite: protectedProcedure.input(z.object({ token: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     const { orgService } = deps();
-    // TODO: Switch to direct call once platform-core >= 1.16.0 is published
-    if (!("acceptInvite" in orgService) || typeof orgService.acceptInvite !== "function") {
-      throw new TRPCError({
-        code: "INTERNAL_SERVER_ERROR",
-        message: "acceptInvite not available — upgrade platform-core",
-      });
-    }
     const result = (await orgService.acceptInvite(input.token, ctx.user.id)) as { orgId: string; role: string };
     const { orgId, role } = result;
-    // TODO: Call MemberProvisionClient.addMember() to sync the new member
-    // to the Paperclip instance once instance URL resolution is wired.
+
+    // Sync new member to running Paperclip instance (best-effort)
+    const { provisionSecret } = deps();
+    if (provisionSecret) {
+      const instance = await resolveOrgInstance(orgId);
+      if (instance) {
+        const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "";
+        const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
+        const client = new MemberProvisionClient(provisionSecret);
+        await client.addMember(instance.instanceUrl, {
+          companyId: instance.companyId,
+          user: { id: ctx.user.id, email, name },
+          role,
+        }).catch((err) => logger.warn("Provision addMember failed (non-blocking)", { orgId, err }));
+      }
+    }
+
     return { orgId, role };
   }),
 
@@ -169,8 +177,22 @@ export const orgRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      const { orgService } = deps();
+      const { orgService, provisionSecret } = deps();
       await orgService.changeRole(input.orgId, ctx.user.id, input.userId, input.role);
+
+      // Sync role change to running Paperclip instance (best-effort)
+      if (provisionSecret) {
+        const instance = await resolveOrgInstance(input.orgId);
+        if (instance) {
+          const client = new MemberProvisionClient(provisionSecret);
+          await client.changeRole(instance.instanceUrl, {
+            companyId: instance.companyId,
+            userId: input.userId,
+            role: input.role,
+          }).catch((err) => logger.warn("Provision changeRole failed (non-blocking)", { orgId: input.orgId, err }));
+        }
+      }
+
       return { updated: true };
     }),
 
@@ -178,8 +200,21 @@ export const orgRouter = router({
   removeMember: orgMemberProcedure
     .input(z.object({ orgId: z.string().min(1), userId: z.string().min(1) }))
     .mutation(async ({ input, ctx }) => {
-      const { orgService } = deps();
+      const { orgService, provisionSecret } = deps();
       await orgService.removeMember(input.orgId, ctx.user.id, input.userId);
+
+      // Sync removal to running Paperclip instance (best-effort)
+      if (provisionSecret) {
+        const instance = await resolveOrgInstance(input.orgId);
+        if (instance) {
+          const client = new MemberProvisionClient(provisionSecret);
+          await client.removeMember(instance.instanceUrl, {
+            companyId: instance.companyId,
+            userId: input.userId,
+          }).catch((err) => logger.warn("Provision removeMember failed (non-blocking)", { orgId: input.orgId, err }));
+        }
+      }
+
       return { removed: true };
     }),
 
