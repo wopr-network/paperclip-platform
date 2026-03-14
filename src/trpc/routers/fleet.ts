@@ -470,6 +470,47 @@ export const fleetRouter = router({
     };
   }),
 
+  /** Extract changelog from an instance's Docker image. */
+  getChangelog: protectedProcedure.input(z.object({ instanceId: z.string().min(1) })).query(async ({ input, ctx }) => {
+    const tenant = tenantFromCtx(ctx);
+    const store = getProfileStore();
+    const profile = await store.get(input.instanceId);
+    if (!profile) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
+    }
+    if (profile.tenantId !== tenant) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
+    }
+
+    try {
+      const docker = getDocker();
+      const container = await docker.createContainer({
+        Image: profile.image,
+        Cmd: ["cat", "/app/changelogs/latest.json"],
+      });
+      await container.start();
+      await container.wait();
+      const logs = await container.logs({ stdout: true });
+      await container.remove();
+
+      // Strip Docker stream header bytes (8-byte prefix per frame)
+      const raw = logs
+        .toString("utf8")
+        .split("")
+        .filter((ch) => ch.charCodeAt(0) > 8)
+        .join("");
+      const changelog: {
+        version: string;
+        date: string;
+        sections: Array<{ title: string; items: string[] }>;
+      } = JSON.parse(raw);
+      return changelog;
+    } catch (err) {
+      logger.warn(`Changelog extraction failed for instance ${input.instanceId}`, { err });
+      return null;
+    }
+  }),
+
   /** List available templates for instance creation. */
   listTemplates: protectedProcedure.query(() => {
     return [
