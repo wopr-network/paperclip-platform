@@ -1,31 +1,36 @@
-# Local development Caddyfile — no TLS, localhost subdomains
+# Local development Caddyfile — no TLS, runpaperclip.com via /etc/hosts
 #
 # Routes:
-#   http://app.localhost:8080  → dashboard (platform-ui-core, port 3000)
-#   http://localhost:8080      → redirect to app.localhost
-#   http://*.localhost:8080    → paperclip-platform tenant proxy (port 3200)
+#   http://app.runpaperclip.com:8080   → dashboard (port 3000)
+#   http://api.runpaperclip.com:8080   → platform API (port 3200)
+#   http://runpaperclip.com:8080       → redirect to app.runpaperclip.com
+#   http://*.runpaperclip.com:8080     → platform tenant proxy (port 3200)
 #
-# Note: *.localhost resolves to 127.0.0.1 in Chrome/Firefox.
-# For Safari/curl, add to /etc/hosts:
-#   127.0.0.1 app.localhost alice.localhost bob.localhost
+# /etc/hosts must include:
+#   127.0.0.1 runpaperclip.com app.runpaperclip.com api.runpaperclip.com
+#   127.0.0.1 <instance>.runpaperclip.com  (add per instance)
 
 {
 	admin :2019
-	# No TLS for local dev
 	auto_https off
 }
 
 # Dashboard UI
-http://app.localhost:8080 {
+http://app.runpaperclip.com:8080 {
 	reverse_proxy dashboard:3000
 }
 
-# Root domain redirect
-http://localhost:8080 {
-	redir http://app.localhost:8080{uri} temporary
+# Platform API
+http://api.runpaperclip.com:8080 {
+	reverse_proxy platform:3200
+}
+
+# Root domain redirect → dashboard
+http://runpaperclip.com:8080 {
+	redir http://app.runpaperclip.com:8080{uri} temporary
 }
 
 # Wildcard — tenant subdomains routed to platform API (tenant proxy)
-http://*.localhost:8080 {
+http://*.runpaperclip.com:8080 {
 	reverse_proxy platform:3200
 }
