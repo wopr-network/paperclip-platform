@@ -60,14 +60,32 @@ export const orgRouter = router({
     return { ...org, members };
   }),
 
-  /** List organizations the authenticated user owns (excludes personal tenant). */
+  /** List organizations the authenticated user belongs to (excludes personal tenant). */
   listMyOrganizations: protectedProcedure.query(async ({ ctx }) => {
     const { orgService } = deps();
-    // getOrCreatePersonalOrg ensures the personal tenant exists, then list owned orgs
-    await orgService.getOrCreatePersonalOrg(ctx.user.id, "User");
-    // OrgService doesn't expose listUserOrgs — use the underlying repo method
-    // The orgRepo.listOrgsByOwner returns type="org" tenants only
+    // TODO: Switch to orgService.listOrgsForUser() once platform-core >= 1.16.0 is published
+    // For now, listOrgsForUser may not exist on the installed OrgService version.
+    // Use it if available, otherwise fall back to empty array.
+    if ("listOrgsForUser" in orgService && typeof orgService.listOrgsForUser === "function") {
+      return orgService.listOrgsForUser(ctx.user.id);
+    }
     return [];
+  }),
+
+  /** Accept an organization invite by token. */
+  acceptInvite: protectedProcedure.input(z.object({ token: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    const { orgService } = deps();
+    // TODO: Switch to direct call once platform-core >= 1.16.0 is published
+    if (!("acceptInvite" in orgService) || typeof orgService.acceptInvite !== "function") {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "acceptInvite not available — upgrade platform-core",
+      });
+    }
+    const { orgId, role } = await orgService.acceptInvite(input.token, ctx.user.id);
+    // TODO: Call MemberProvisionClient.addMember() to sync the new member
+    // to the Paperclip instance once instance URL resolution is wired.
+    return { orgId, role };
   }),
 
   /** Create a new team organization. The caller becomes the owner. */
