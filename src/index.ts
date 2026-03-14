@@ -75,6 +75,9 @@ async function main() {
       // --- tRPC router dependencies (billing, settings, profile, page-context) ---
       await wireTrpcDeps(db, pool, creditLedger);
       logger.info("tRPC router dependencies initialized");
+
+      // --- BTCPay crypto webhook (when configured) ---
+      await wireCryptoWebhook(db, creditLedger);
     } catch (err) {
       logger.error("Startup initialization failed (DB, auth, or gateway)", {
         error: (err as Error).message,
@@ -288,4 +291,40 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
   });
 
   logger.info("Inference gateway mounted at /v1 (OpenRouter)");
+}
+
+// ---------------------------------------------------------------------------
+// BTCPay crypto webhook wiring
+// ---------------------------------------------------------------------------
+
+async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").DrizzleDb, creditLedger: ILedger) {
+  const apiKey = process.env.BTCPAY_API_KEY;
+  const baseUrl = process.env.BTCPAY_BASE_URL;
+  const storeId = process.env.BTCPAY_STORE_ID;
+  const webhookSecret = process.env.BTCPAY_WEBHOOK_SECRET;
+
+  if (!apiKey || !baseUrl || !storeId || !webhookSecret) {
+    logger.warn(
+      "BTCPay not fully configured — crypto payments disabled (need BTCPAY_API_KEY, BTCPAY_BASE_URL, BTCPAY_STORE_ID, BTCPAY_WEBHOOK_SECRET)",
+    );
+    return;
+  }
+
+  const { BTCPayClient, DrizzleCryptoChargeRepository, DrizzleWebhookSeenRepository } = await import(
+    "@wopr-network/platform-core/billing"
+  );
+  const { setCryptoWebhookDeps } = await import("./routes/crypto-webhook.js");
+  const { setCryptoBillingDeps } = await import("./trpc/routers/billing.js");
+
+  const cryptoClient = new BTCPayClient({ apiKey, baseUrl, storeId });
+  const cryptoChargeRepo = new DrizzleCryptoChargeRepository(db);
+  const replayGuard = new DrizzleWebhookSeenRepository(db);
+
+  // Wire webhook route deps (for POST /api/webhooks/crypto)
+  setCryptoWebhookDeps({ chargeStore: cryptoChargeRepo, creditLedger, replayGuard }, webhookSecret);
+
+  // Wire crypto client into billing tRPC router (for cryptoCheckout mutation)
+  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo);
+
+  logger.info("BTCPay crypto payments configured (webhook + checkout)");
 }
