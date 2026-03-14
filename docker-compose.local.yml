@@ -1,7 +1,7 @@
 ##
 ## Full local testing stack for Paperclip Platform.
 ##
-## Runs: Postgres + platform API + dashboard + Caddy + seed container
+## Runs: Postgres + platform API + dashboard + Caddy + BTCPay (crypto) + seed container
 ##
 ## Prerequisites:
 ##   1. cp .env.local.example .env.local   # fill in Stripe test keys + secrets
@@ -14,6 +14,7 @@
 ##   Dashboard:  http://app.runpaperclip.com:8080
 ##   API:        http://api.runpaperclip.com:8080/health
 ##   Tenant:     http://{subdomain}.runpaperclip.com:8080
+##   BTCPay:     http://localhost:14142 (admin UI — create store + API key here)
 ##   Caddy admin: http://localhost:2019
 ##   Postgres:   localhost:5433 (mapped from container 5432)
 ##
@@ -28,8 +29,11 @@ services:
       POSTGRES_USER: paperclip
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paperclip-local}
       POSTGRES_DB: paperclip_platform
+      # Create extra databases for nbxplorer + btcpayserver on first startup
+      POSTGRES_MULTIPLE_DATABASES: nbxplorer,btcpayserver
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./scripts/create-multiple-databases.sh:/docker-entrypoint-initdb.d/create-multiple-databases.sh:ro
     networks:
       - paperclip
     healthcheck:
@@ -54,6 +58,9 @@ services:
       # CADDY_ADMIN_URL intentionally omitted — .env.local sets it empty to
       # prevent ProxyManager /load calls from overwriting the Caddyfile wildcard.
       BETTER_AUTH_URL: http://api.runpaperclip.com:8080
+      # BTCPay env vars come from .env.local (BTCPAY_API_KEY, BTCPAY_STORE_ID, etc.)
+      # BTCPAY_BASE_URL is overridden here because the container uses the docker network name
+      BTCPAY_BASE_URL: http://btcpay:23002
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - fleet-data:/data/fleet
@@ -109,6 +116,74 @@ services:
       timeout: 5s
       retries: 3
 
+  # --- BTCPay Server (crypto payments — self-hosted, zero fees) ---
+  # Stack: bitcoind (regtest) → nbxplorer (indexer) → btcpayserver
+  # BTCPay uses the same postgres instance with a separate database.
+
+  bitcoind:
+    image: btcpayserver/bitcoin:30.2
+    restart: unless-stopped
+    environment:
+      BITCOIN_NETWORK: regtest
+      BITCOIN_WALLETDIR: /data/wallets
+      BITCOIN_EXTRA_ARGS: |-
+        server=1
+        rpcuser=btcpay
+        rpcpassword=btcpay-local
+        rpcallowip=0.0.0.0/0
+        rpcbind=0.0.0.0
+        fallbackfee=0.0002
+    volumes:
+      - bitcoin-data:/data
+    networks:
+      - paperclip
+
+  nbxplorer:
+    image: nicolasdorier/nbxplorer:2.6.1
+    restart: unless-stopped
+    environment:
+      NBXPLORER_NETWORK: regtest
+      NBXPLORER_CHAINS: btc
+      NBXPLORER_BTCRPCURL: http://bitcoind:18443/
+      NBXPLORER_BTCRPCUSER: btcpay
+      NBXPLORER_BTCRPCPASSWORD: btcpay-local
+      NBXPLORER_BTCNODEENDPOINT: bitcoind:18444
+      NBXPLORER_POSTGRES: User ID=paperclip;Password=${POSTGRES_PASSWORD:-paperclip-local};Include Error Detail=true;Host=postgres;Port=5432;Database=nbxplorer
+      NBXPLORER_AUTOMIGRATE: "1"
+      NBXPLORER_BIND: 0.0.0.0:32838
+      NBXPLORER_NOAUTH: "1"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      bitcoind:
+        condition: service_started
+    networks:
+      - paperclip
+
+  btcpay:
+    image: btcpayserver/btcpayserver:2.3.5
+    restart: unless-stopped
+    ports:
+      - "14142:23002"
+    environment:
+      BTCPAY_NETWORK: regtest
+      BTCPAY_CHAINS: btc
+      BTCPAY_POSTGRES: User ID=paperclip;Password=${POSTGRES_PASSWORD:-paperclip-local};Include Error Detail=true;Host=postgres;Port=5432;Database=btcpayserver
+      BTCPAY_BTCEXPLORERURL: http://nbxplorer:32838/
+      BTCPAY_BIND: 0.0.0.0:23002
+      BTCPAY_ALLOW-ADMIN-REGISTRATION: "true"
+      BTCPAY_DISABLE-REGISTRATION: "false"
+    depends_on:
+      - nbxplorer
+    networks:
+      - paperclip
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:23002/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   # --- Seed Paperclip container (for testing provision flow) ---
   seed:
     image: ${PAPERCLIP_IMAGE:-paperclip-managed:local}
@@ -147,3 +222,4 @@ volumes:
   caddy-data:
   caddy-config:
   seed-data:
+  bitcoin-data:

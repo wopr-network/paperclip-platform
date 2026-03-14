@@ -9,6 +9,7 @@ import { logger } from "./log.js";
 import { adminAuth } from "./middleware/admin-auth.js";
 import { tenantProxyMiddleware } from "./proxy/tenant-proxy.js";
 import { adminRoutes } from "./routes/admin.js";
+import { cryptoWebhookRoutes } from "./routes/crypto-webhook.js";
 import { healthRoutes } from "./routes/health.js";
 import { provisionWebhookRoutes } from "./routes/provision-webhook.js";
 import { appRouter } from "./trpc/index.js";
@@ -60,6 +61,7 @@ app.on(["POST", "GET"], "/api/auth/*", async (c) => {
 // Platform routes
 app.route("/health", healthRoutes);
 app.route("/api/provision", provisionWebhookRoutes);
+app.route("/api/webhooks/crypto", cryptoWebhookRoutes);
 app.use("/api/admin/*", adminAuth);
 app.route("/api/admin", adminRoutes);
 

@@ -2,18 +2,19 @@ FROM node:lts-trixie-slim AS base
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
+RUN npm install -g pnpm
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts --no-optional || npm ci --force --omit=dev
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile --prod
 
 FROM base AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts --no-optional || npm ci --force
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 COPY . .
-RUN npm run build
+RUN pnpm run build
 RUN test -f dist/index.js || (echo "ERROR: build output missing" && exit 1)
 
 FROM base AS production
@@ -33,9 +34,10 @@ ENV NODE_ENV=production \
 # Injected at runtime by fleet / docker-compose:
 #   PROVISION_SECRET  — shared secret for /internal/* and provision webhook
 #   GATEWAY_URL       — platform-core inference gateway URL
-#   PLATFORM_DOMAIN   — e.g. runpaperclip.ai
+#   PLATFORM_DOMAIN   — e.g. runpaperclip.com
 #   UI_ORIGIN         — CORS origin for dashboard
 #   DATABASE_URL      — Postgres (optional)
+#   BTCPAY_*          — BTCPay Server crypto payment config (optional)
 
 EXPOSE 3200
 

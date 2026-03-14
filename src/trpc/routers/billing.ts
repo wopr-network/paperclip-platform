@@ -148,6 +148,13 @@ export function setBillingRouterDeps(deps: BillingRouterDeps): void {
   _deps = deps;
 }
 
+/** Wire crypto deps after initial billing setup (BTCPay may init after Stripe). */
+export function setCryptoBillingDeps(cryptoClient: BTCPayClient, cryptoChargeRepo: ICryptoChargeRepository): void {
+  if (!_deps) throw new Error("setBillingRouterDeps must be called before setCryptoBillingDeps");
+  _deps.cryptoClient = cryptoClient;
+  _deps.cryptoChargeRepo = cryptoChargeRepo;
+}
+
 function deps(): BillingRouterDeps {
   if (!_deps) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Billing not initialized" });
   return _deps;
