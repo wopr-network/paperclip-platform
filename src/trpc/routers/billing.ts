@@ -10,8 +10,13 @@ import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
 import type { ICryptoChargeRepository, IPaymentProcessor } from "@wopr-network/platform-core/billing";
 import {
   type BTCPayClient,
+  ChainlinkOracle,
   createCryptoCheckout,
+  createEthCheckout,
+  createRpcCaller,
   createStablecoinCheckout,
+  type IPriceOracle,
+  MIN_ETH_USD,
   MIN_PAYMENT_USD,
   MIN_STABLECOIN_USD,
   type StablecoinCheckoutDeps,
@@ -146,6 +151,7 @@ export interface BillingRouterDeps {
   cryptoClient?: BTCPayClient;
   cryptoChargeRepo?: ICryptoChargeRepository;
   evmXpub?: string;
+  priceOracle?: IPriceOracle;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -161,14 +167,23 @@ export function setCryptoBillingDeps(
   cryptoClient: BTCPayClient,
   cryptoChargeRepo: ICryptoChargeRepository,
   evmXpub?: string,
+  evmRpcUrl?: string,
 ): void {
+  // Create price oracle if we have an RPC URL (Chainlink on-chain feeds)
+  let priceOracle: IPriceOracle | undefined;
+  if (evmRpcUrl) {
+    const rpcCall = createRpcCaller(evmRpcUrl);
+    priceOracle = new ChainlinkOracle({ rpcCall });
+  }
+
   if (!_deps) {
-    _deps = { cryptoClient, cryptoChargeRepo, evmXpub } as BillingRouterDeps;
+    _deps = { cryptoClient, cryptoChargeRepo, evmXpub, priceOracle } as BillingRouterDeps;
     return;
   }
   _deps.cryptoClient = cryptoClient;
   _deps.cryptoChargeRepo = cryptoChargeRepo;
   if (evmXpub) _deps.evmXpub = evmXpub;
+  if (priceOracle) _deps.priceOracle = priceOracle;
 }
 
 function deps(): BillingRouterDeps {
@@ -330,6 +345,30 @@ export const billingRouter = router({
           token: input.token as "USDC",
           chain: input.chain as "base",
         },
+      );
+      return result;
+    }),
+
+  /** Create a native ETH payment session (oracle-priced). */
+  ethCheckout: tenantProcedure
+    .input(
+      z.object({
+        amountUsd: z.number().min(MIN_ETH_USD).max(10000),
+        chain: z.enum(["base", "ethereum", "arbitrum", "polygon"]),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const tenant = ctx.tenantId;
+      const { cryptoChargeRepo, evmXpub, priceOracle } = deps();
+      if (!cryptoChargeRepo || !evmXpub || !priceOracle) {
+        throw new TRPCError({
+          code: "NOT_IMPLEMENTED",
+          message: "ETH payments not configured",
+        });
+      }
+      const result = await createEthCheckout(
+        { chargeStore: cryptoChargeRepo, oracle: priceOracle, xpub: evmXpub },
+        { tenant, amountUsd: input.amountUsd, chain: input.chain as "base" },
       );
       return result;
     }),
