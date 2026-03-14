@@ -174,7 +174,7 @@ async function wireTrpcDeps(
   const authUserRepo = new BetterAuthUserRepository(pool);
   const orgRepo = new DrizzleOrgRepository(db);
   const orgService = new OrgService(orgRepo, orgMemberRepo, db, { userRepo: authUserRepo });
-  setOrgRouterDeps({ orgService, authUserRepo, creditLedger });
+  setOrgRouterDeps({ orgService, authUserRepo, creditLedger, provisionSecret: getConfig().PROVISION_SECRET });
 
   // --- Billing deps ---
   const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -231,7 +231,15 @@ async function wireTrpcDeps(
     });
 
     // Wire billing deps into org router (processor, meter, priceMap)
-    setOrgRouterDeps({ orgService, authUserRepo, creditLedger, meterAggregator, processor, priceMap });
+    setOrgRouterDeps({
+      orgService,
+      authUserRepo,
+      creditLedger,
+      meterAggregator,
+      processor,
+      priceMap,
+      provisionSecret: getConfig().PROVISION_SECRET,
+    });
     logger.info("Billing tRPC router wired (Stripe + all repositories)");
   } else {
     logger.warn("STRIPE_SECRET_KEY not set — billing tRPC procedures will fail until configured");
@@ -323,8 +331,10 @@ async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").Dr
   // Wire webhook route deps (for POST /api/webhooks/crypto)
   setCryptoWebhookDeps({ chargeStore: cryptoChargeRepo, creditLedger, replayGuard }, webhookSecret);
 
-  // Wire crypto client into billing tRPC router (for cryptoCheckout mutation)
-  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo);
+  // Wire crypto client into billing tRPC router (for cryptoCheckout + stablecoinCheckout)
+  const evmXpub = process.env.EVM_XPUB;
+  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo, evmXpub);
 
   logger.info("BTCPay crypto payments configured (webhook + checkout)");
+  if (evmXpub) logger.info("Stablecoin payments configured (EVM_XPUB set)");
 }
