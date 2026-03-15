@@ -197,7 +197,7 @@ async function main() {
           snapshotDir: process.env.FLEET_SNAPSHOT_DIR || `${config.FLEET_DATA_DIR}/snapshots`,
           onRolloutComplete: (result) => logger.info("Fleet rollout complete", result),
           eventEmitter: sharedEventEmitter,
-          onManualTenantsSkipped: (tenantIds) => {
+          onManualTenantsSkipped: (tenantIds, imageTag) => {
             // Notify manual-mode tenants that an update is available (best-effort)
             if (!_notificationService || !_emailResolver) {
               logger.warn("onManualTenantsSkipped fired before notification pipeline ready", { tenantIds });
@@ -205,12 +205,13 @@ async function main() {
             }
             const svc = _notificationService;
             const resolver = _emailResolver;
+            const version = imageTag || "latest";
             for (const tenantId of tenantIds) {
               resolver
                 .resolveEmail(tenantId)
                 .then((email) => {
                   if (email) {
-                    svc.notifyFleetUpdateAvailable(tenantId, email, "latest", "", "");
+                    svc.notifyFleetUpdateAvailable(tenantId, email, version, "", "");
                   }
                 })
                 .catch(() => {
