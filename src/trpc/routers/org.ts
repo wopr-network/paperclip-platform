@@ -79,19 +79,19 @@ export const orgRouter = router({
     // Sync new member to running Paperclip instance (best-effort)
     const { provisionSecret } = deps();
     if (provisionSecret) {
-      const instance = await resolveOrgInstance(orgId);
-      if (instance) {
-        const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "";
-        const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
-        const client = new MemberProvisionClient(provisionSecret);
-        await client
-          .addMember(instance.instanceUrl, {
-            companyId: instance.companyId,
-            user: { id: ctx.user.id, email, name },
-            role,
-          })
-          .catch((err) => logger.warn("Provision addMember failed (non-blocking)", { orgId, err }));
-      }
+      resolveOrgInstance(orgId)
+        .then((instance) => {
+          if (!instance) return;
+          const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "";
+          const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
+          const client = new MemberProvisionClient(provisionSecret);
+          return client
+            .addMember(instance.instanceUrl, instance.companyId, { id: ctx.user.id, email, name }, role)
+            .then((r) => {
+              if (!r.success) logger.warn("Provision addMember failed (non-blocking)", { orgId, error: r.error });
+            });
+        })
+        .catch((err) => logger.error("Could not resolve instance for provision", { orgId, err }));
     }
 
     return { orgId, role };
@@ -184,17 +184,16 @@ export const orgRouter = router({
 
       // Sync role change to running Paperclip instance (best-effort)
       if (provisionSecret) {
-        const instance = await resolveOrgInstance(input.orgId);
-        if (instance) {
-          const client = new MemberProvisionClient(provisionSecret);
-          await client
-            .changeRole(instance.instanceUrl, {
-              companyId: instance.companyId,
-              userId: input.userId,
-              role: input.role,
-            })
-            .catch((err) => logger.warn("Provision changeRole failed (non-blocking)", { orgId: input.orgId, err }));
-        }
+        resolveOrgInstance(input.orgId)
+          .then((instance) => {
+            if (!instance) return;
+            const client = new MemberProvisionClient(provisionSecret);
+            return client.changeRole(instance.instanceUrl, instance.companyId, input.userId, input.role).then((r) => {
+              if (!r.success)
+                logger.warn("Provision changeRole failed (non-blocking)", { orgId: input.orgId, error: r.error });
+            });
+          })
+          .catch((err) => logger.error("Could not resolve instance for provision", { orgId: input.orgId, err }));
       }
 
       return { updated: true };
@@ -209,16 +208,16 @@ export const orgRouter = router({
 
       // Sync removal to running Paperclip instance (best-effort)
       if (provisionSecret) {
-        const instance = await resolveOrgInstance(input.orgId);
-        if (instance) {
-          const client = new MemberProvisionClient(provisionSecret);
-          await client
-            .removeMember(instance.instanceUrl, {
-              companyId: instance.companyId,
-              userId: input.userId,
-            })
-            .catch((err) => logger.warn("Provision removeMember failed (non-blocking)", { orgId: input.orgId, err }));
-        }
+        resolveOrgInstance(input.orgId)
+          .then((instance) => {
+            if (!instance) return;
+            const client = new MemberProvisionClient(provisionSecret);
+            return client.removeMember(instance.instanceUrl, instance.companyId, input.userId).then((r) => {
+              if (!r.success)
+                logger.warn("Provision removeMember failed (non-blocking)", { orgId: input.orgId, error: r.error });
+            });
+          })
+          .catch((err) => logger.error("Could not resolve instance for provision", { orgId: input.orgId, err }));
       }
 
       return { removed: true };
