@@ -34,6 +34,18 @@ let fleetUpdaterHandle: FleetUpdaterHandle | null = null;
 let cryptoWatcherHandle: CryptoWatcherHandle | null = null;
 let notificationWorkerTimer: ReturnType<typeof setInterval> | null = null;
 let fleetNotificationUnsubscribe: (() => void) | null = null;
+// Late-bound refs for notification service — set during notification pipeline init,
+// read by onManualTenantsSkipped callback (fires at rollout time, well after boot).
+let _notificationService: {
+  notifyFleetUpdateAvailable: (
+    tenantId: string,
+    email: string,
+    version: string,
+    changelogDate: string,
+    changelogSummary: string,
+  ) => void;
+} | null = null;
+let _emailResolver: { resolveEmail: (tenantId: string) => Promise<string | null> } | null = null;
 
 async function main() {
   const config = getConfig();
@@ -185,6 +197,24 @@ async function main() {
           snapshotDir: process.env.FLEET_SNAPSHOT_DIR || `${config.FLEET_DATA_DIR}/snapshots`,
           onRolloutComplete: (result) => logger.info("Fleet rollout complete", result),
           eventEmitter: sharedEventEmitter,
+          onManualTenantsSkipped: (tenantIds) => {
+            // Notify manual-mode tenants that an update is available (best-effort)
+            if (!_notificationService || !_emailResolver) return;
+            const svc = _notificationService;
+            const resolver = _emailResolver;
+            for (const tenantId of tenantIds) {
+              resolver
+                .resolveEmail(tenantId)
+                .then((email) => {
+                  if (email) {
+                    svc.notifyFleetUpdateAvailable(tenantId, email, "latest", "", "");
+                  }
+                })
+                .catch(() => {
+                  // best-effort — skip on failure
+                });
+            }
+          },
         });
         setVolumeSnapshotManager(fleetUpdaterHandle.snapshotManager);
         setRolloutOrchestrator(fleetUpdaterHandle.orchestrator);
@@ -222,6 +252,7 @@ async function main() {
           const renderer = new HandlebarsRenderer(templateRepo);
 
           const notificationService = new NotificationService(queueStore, config.APP_BASE_URL);
+          _notificationService = notificationService;
 
           const worker = new NotificationWorker({
             queue: queueStore,
@@ -249,6 +280,7 @@ async function main() {
           if (sharedEventEmitter) {
             const { DrizzleBetterAuthEmailResolver } = await import("./services/drizzle-email-resolver.js");
             const emailResolver = new DrizzleBetterAuthEmailResolver(pgDb);
+            _emailResolver = emailResolver;
 
             fleetNotificationUnsubscribe = fleetMod.initFleetNotificationListener({
               eventEmitter: sharedEventEmitter,
