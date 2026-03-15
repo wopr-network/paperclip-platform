@@ -7,7 +7,11 @@
 
 import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
-import type { ICryptoChargeRepository, IPaymentMethodStore, IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import type {
+  ICryptoChargeRepository,
+  IPaymentMethodStore,
+  IPaymentProcessor,
+} from "@wopr-network/platform-core/billing";
 import {
   type BTCPayClient,
   ChainlinkOracle,
@@ -317,25 +321,23 @@ export const billingRouter = router({
     }),
 
   /** Check the status of a crypto charge (for payment status polling). */
-  chargeStatus: tenantProcedure
-    .input(z.object({ referenceId: z.string().min(1) }))
-    .query(async ({ input, ctx }) => {
-      const { cryptoChargeRepo } = deps();
-      if (!cryptoChargeRepo) {
-        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
-      }
-      const charge = await cryptoChargeRepo.getByReferenceId(input.referenceId);
-      if (!charge || charge.tenantId !== ctx.tenantId) {
-        throw new TRPCError({ code: "NOT_FOUND", message: "Charge not found" });
-      }
-      return {
-        status: charge.status,
-        credited: charge.creditedAt !== null,
-        amountUsdCents: charge.amountUsdCents,
-        token: charge.token,
-        chain: charge.chain,
-      };
-    }),
+  chargeStatus: tenantProcedure.input(z.object({ referenceId: z.string().min(1) })).query(async ({ input, ctx }) => {
+    const { cryptoChargeRepo } = deps();
+    if (!cryptoChargeRepo) {
+      throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
+    }
+    const charge = await cryptoChargeRepo.getByReferenceId(input.referenceId);
+    if (!charge || charge.tenantId !== ctx.tenantId) {
+      throw new TRPCError({ code: "NOT_FOUND", message: "Charge not found" });
+    }
+    return {
+      status: charge.status,
+      credited: charge.creditedAt !== null,
+      amountUsdCents: charge.amountUsdCents,
+      token: charge.token,
+      chain: charge.chain,
+    };
+  }),
 
   /** Admin: list all payment methods (including disabled). */
   adminListPaymentMethods: protectedProcedure.query(async () => {

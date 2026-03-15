@@ -1,6 +1,8 @@
-import type { ILedger } from "@wopr-network/platform-core/credits";
 import type {
+  BtcPaymentEvent,
   DrizzleWatcherCursorStore,
+  EthPaymentEvent,
+  EvmPaymentEvent,
   ICryptoChargeRepository,
   IPaymentMethodStore,
   PaymentMethodRecord,
@@ -10,13 +12,13 @@ import {
   ChainlinkOracle,
   createBitcoindRpc,
   createRpcCaller,
-  EvmWatcher,
   EthWatcher,
+  EvmWatcher,
   settleBtcPayment,
-  settleEvmPayment,
   settleEthPayment,
+  settleEvmPayment,
 } from "@wopr-network/platform-core/billing";
-import type { BtcPaymentEvent, EvmPaymentEvent, EthPaymentEvent } from "@wopr-network/platform-core/billing";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db";
 import { logger } from "../log.js";
 
@@ -274,7 +276,9 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
   // Startup
   (async () => {
     await refreshMethods();
-    log.info(`Crypto watchers started (${watchers.size} active, poll=${pollIntervalMs}ms, refresh=${refreshIntervalMs}ms)`);
+    log.info(
+      `Crypto watchers started (${watchers.size} active, poll=${pollIntervalMs}ms, refresh=${refreshIntervalMs}ms)`,
+    );
 
     pollTimer = setInterval(() => {
       pollAll().catch((err) => log.error("Poll error", { error: (err as Error).message }));
