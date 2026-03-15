@@ -93,6 +93,15 @@ const envSchema = z.object({
    * meters usage, and debits credits. Required for AI features.
    */
   OPENROUTER_API_KEY: z.string().optional(),
+
+  /** Resend API key for transactional email (notification pipeline). */
+  RESEND_API_KEY: z.string().optional(),
+
+  /** Sender address for notification emails. */
+  FROM_EMAIL: z.string().default("noreply@paperclip.bot"),
+
+  /** Base URL for the web app (used in email links). */
+  APP_BASE_URL: z.string().default("https://app.paperclip.bot"),
 });
 
 export type Config = z.infer<typeof envSchema>;

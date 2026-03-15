@@ -32,6 +32,8 @@ import { logger } from "./log.js";
 
 let fleetUpdaterHandle: FleetUpdaterHandle | null = null;
 let cryptoWatcherHandle: CryptoWatcherHandle | null = null;
+let notificationWorkerTimer: ReturnType<typeof setInterval> | null = null;
+let fleetNotificationUnsubscribe: (() => void) | null = null;
 
 async function main() {
   const config = getConfig();
@@ -154,6 +156,15 @@ async function main() {
       startHealthMonitor();
 
       // Start fleet auto-update pipeline (ImagePoller → RolloutOrchestrator → ContainerUpdater)
+      // Create a shared event emitter so fleet events flow to the notification listener.
+      const fleetMod = await import("@wopr-network/platform-core/fleet");
+      let sharedEventEmitter: ReturnType<typeof fleetMod.getFleetEventEmitter> | undefined;
+      try {
+        sharedEventEmitter = fleetMod.getFleetEventEmitter();
+      } catch {
+        // FleetEventEmitter not available — fleet notifications will be skipped
+      }
+
       try {
         const docker = getDocker();
         const fleet = getFleetManager();
@@ -173,12 +184,99 @@ async function main() {
           strategy: "rolling-wave",
           snapshotDir: process.env.FLEET_SNAPSHOT_DIR || `${config.FLEET_DATA_DIR}/snapshots`,
           onRolloutComplete: (result) => logger.info("Fleet rollout complete", result),
+          eventEmitter: sharedEventEmitter,
         });
         setVolumeSnapshotManager(fleetUpdaterHandle.snapshotManager);
         setRolloutOrchestrator(fleetUpdaterHandle.orchestrator);
         logger.info("Fleet auto-update pipeline started");
       } catch (err) {
         logger.warn("Fleet auto-update pipeline failed to start", {
+          error: (err as Error).message,
+        });
+      }
+
+      // --- Notification email pipeline (best-effort) ---
+      try {
+        const resendKey = config.RESEND_API_KEY;
+        if (resendKey && dbModule.hasDatabase()) {
+          const {
+            EmailClient,
+            NotificationService,
+            NotificationWorker,
+            DrizzleNotificationQueueStore,
+            DrizzleNotificationPreferencesStore,
+            DrizzleNotificationTemplateRepository,
+            HandlebarsRenderer,
+          } = await import("@wopr-network/platform-core/email");
+
+          const db = dbModule.getDb();
+          const pgDb = db as unknown as import("drizzle-orm/pg-core").PgDatabase<never>;
+
+          const emailClient = new EmailClient({
+            apiKey: resendKey,
+            from: config.FROM_EMAIL,
+          });
+          const queueStore = new DrizzleNotificationQueueStore(db);
+          const prefsStore = new DrizzleNotificationPreferencesStore(db);
+          const templateRepo = new DrizzleNotificationTemplateRepository(pgDb);
+          const renderer = new HandlebarsRenderer(templateRepo);
+
+          // Log renderer availability for debugging (renderer wired for future use)
+          void renderer;
+
+          const notificationService = new NotificationService(queueStore, config.APP_BASE_URL);
+
+          const worker = new NotificationWorker({
+            queue: queueStore,
+            emailClient,
+            preferences: prefsStore,
+          });
+
+          // Poll every 30 seconds
+          notificationWorkerTimer = setInterval(() => {
+            worker.processBatch().catch((err: unknown) => {
+              logger.error("Notification worker error", {
+                error: (err as Error).message,
+              });
+            });
+          }, 30_000);
+
+          // Wire fleet event → email notifications
+          if (sharedEventEmitter) {
+            const { sql } = await import("drizzle-orm");
+
+            fleetNotificationUnsubscribe = fleetMod.initFleetNotificationListener({
+              eventEmitter: sharedEventEmitter,
+              notificationService,
+              preferences: prefsStore,
+              resolveEmail: async (tenantId: string): Promise<string | null> => {
+                type EmailRow = { email: string };
+                type QueryResult = { rows: EmailRow[] };
+                try {
+                  const result = (await db.execute(
+                    sql`SELECT email FROM "user" WHERE id = ${tenantId} LIMIT 1`,
+                  )) as QueryResult;
+                  if (result.rows.length > 0) return result.rows[0].email;
+
+                  // If tenantId is an org, find the org owner
+                  const orgResult = (await db.execute(
+                    sql`SELECT u.email FROM "member" m JOIN "user" u ON u.id = m."userId" WHERE m."organizationId" = ${tenantId} AND m.role = 'owner' LIMIT 1`,
+                  )) as QueryResult;
+                  return orgResult.rows.length > 0 ? orgResult.rows[0].email : null;
+                } catch {
+                  return null;
+                }
+              },
+            });
+            logger.info("Fleet notification listener started");
+          }
+
+          logger.info("Notification email pipeline started");
+        } else if (!resendKey) {
+          logger.info("Notification pipeline skipped: RESEND_API_KEY not configured");
+        }
+      } catch (err) {
+        logger.warn("Notification pipeline failed to start (non-fatal)", {
           error: (err as Error).message,
         });
       }
@@ -206,6 +304,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
         logger.error("Error stopping crypto watchers", { error: err });
       }
     }
+    if (notificationWorkerTimer) clearInterval(notificationWorkerTimer);
+    if (fleetNotificationUnsubscribe) fleetNotificationUnsubscribe();
     if (fleetUpdaterHandle) {
       fleetUpdaterHandle.stop().catch(() => {});
     }

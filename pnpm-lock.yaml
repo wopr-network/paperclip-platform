@@ -15,8 +15,8 @@ importers:
         specifier: ^11.12.0
         version: 11.12.0(typescript@5.9.3)
       '@wopr-network/platform-core':
-        specifier: ^1.28.0
-        version: 1.28.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)
+        specifier: ^1.30.0
+        version: 1.30.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)
       '@wopr-network/provision-client':
         specifier: ^1.0.0
         version: 1.0.0(hono@4.12.8)
@@ -968,8 +968,8 @@ packages:
   '@vitest/utils@4.1.0':
     resolution: {integrity: sha512-XfPXT6a8TZY3dcGY8EdwsBulFCIw+BeeX0RZn2x/BtiY/75YGh8FeWGG8QISN/WhaqSrE2OrlDgtF8q5uhOTmw==}
 
-  '@wopr-network/platform-core@1.28.0':
-    resolution: {integrity: sha512-7E981ktSUmJShkua1adq/853q7uuYA01WAo+1IUZYnHvRPmZV+e7tniIRZ2bNlfSGj0M6SO6qc8aXdXK5vmjsw==}
+  '@wopr-network/platform-core@1.30.0':
+    resolution: {integrity: sha512-XIluM4lVhnKztVViX0DEaidk7sEFf3d+jzAkRqL+TSr3KB8l0eRjnipFwmFQK9Nq2lW5727dfEnfn90/G1qgTg==}
     peerDependencies:
       '@trpc/server': '>=11'
       better-auth: '>=1.5'
@@ -1352,6 +1352,11 @@ packages:
   get-tsconfig@4.13.6:
     resolution: {integrity: sha512-shZT/QMiSHc/YBLxxOkMtgSid5HFoauqCE3/exfsEcwg1WkeqjG+V40yBbBrsD+jW2HDXcs28xOfcbm2jI8Ddw==}
 
+  handlebars@4.7.8:
+    resolution: {integrity: sha512-vafaFqs8MZkRrSX7sFVUdo3ap/eNiLnb4IakshzvP56X5Nr1iGKAIqdX6tMlm6HcNRIkr6AxO5jFEoJzzpT8aQ==}
+    engines: {node: '>=0.4.7'}
+    hasBin: true
+
   hono@4.12.8:
     resolution: {integrity: sha512-VJCEvtrezO1IAR+kqEYnxUOoStaQPGrCmX3j4wDTNOcD1uRPFpGlwQUIW8niPuvHXaTUxeOUl5MMDGrl+tmO9A==}
     engines: {node: '>=16.9.0'}
@@ -1483,6 +1488,9 @@ packages:
   memory-pager@1.5.0:
     resolution: {integrity: sha512-ZS4Bp4r/Zoeq6+NLJpP+0Zzm0pR8whtGPf1XExKLJBAczGMnSi3It14OiNCStjQjM6NU1okjQGSxgEZN8eBYKg==}
 
+  minimist@1.2.8:
+    resolution: {integrity: sha512-2yyAR8qBkN3YuheJanUpWC5U3bb5osDywNB8RzDVlDwDHbocAJveqqj1u8+SVD7jkWT4yvsHCpWqqWqAxb0zCA==}
+
   mkdirp-classic@0.5.3:
     resolution: {integrity: sha512-gKLcREMhtuZRwRAfqP3RFW+TK4JqApVBtOIftVgjuABpAtpxhPGaDcfvbhNvD0B8iD1oUr/txX35NjcaY6Ns/A==}
 
@@ -1531,6 +1539,9 @@ packages:
   nanostores@1.1.1:
     resolution: {integrity: sha512-EYJqS25r2iBeTtGQCHidXl1VfZ1jXM7Q04zXJOrMlxVVmD0ptxJaNux92n1mJ7c5lN3zTq12MhH/8x59nP+qmg==}
     engines: {node: ^20.0.0 || >=22.0.0}
+
+  neo-async@2.6.2:
+    resolution: {integrity: sha512-Yd3UES5mWCSqR+qNT93S3UoYUkqAZ9lLg8a7g9rimsWmYGK8cVToA4/sF3RrshdyV3sAGMXVUmpMYOw+dLpOuw==}
 
   obug@2.1.1:
     resolution: {integrity: sha512-uTqF9MuPraAQ+IsnPf366RG4cP9RtUi7MLO1N3KEc+wb0a6yKpeL0lmk2IB1jY5KHPAlTc6T/JRdC/YqxHNwkQ==}
@@ -1780,6 +1791,11 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  uglify-js@3.19.3:
+    resolution: {integrity: sha512-v3Xu+yuwBXisp6QYTcH4UbH+xYJXqnq2m/LtQVWKWzYc1iehYnLixoQDN9FH6/j9/oybfd6W9Ghwkl8+UMKTKQ==}
+    engines: {node: '>=0.8.0'}
+    hasBin: true
+
   undici-types@5.26.5:
     resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
 
@@ -1899,6 +1915,9 @@ packages:
   winston@3.19.0:
     resolution: {integrity: sha512-LZNJgPzfKR+/J3cHkxcpHKpKKvGfDZVPS4hfJCc4cCG0CgYzvlD6yE/S3CIL/Yt91ak327YCpiF/0MyeZHEHKA==}
     engines: {node: '>= 12.0.0'}
+
+  wordwrap@1.0.0:
+    resolution: {integrity: sha512-gvVzJFlPycKc5dZN4yPkP8w7Dc37BtP1yczEneOb4uq34pXZcvrtRTmWV8W+Ume+XCxKgbjM+nevkyFPMybd4Q==}
 
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
@@ -2565,7 +2584,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@wopr-network/platform-core@1.28.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)':
+  '@wopr-network/platform-core@1.30.0(@trpc/server@11.12.0(typescript@5.9.3))(better-auth@1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2))))(dockerode@4.0.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(hono@4.12.8)(pg@8.20.0)(resend@6.9.3)(stripe@20.4.1(@types/node@25.5.0))(typescript@5.9.3)(ws@8.19.0)(zod@4.3.6)':
     dependencies:
       '@noble/hashes': 2.0.1
       '@scure/base': 2.0.0
@@ -2575,6 +2594,7 @@ snapshots:
       better-auth: 1.5.5(drizzle-kit@0.31.9)(drizzle-orm@0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0))(mongodb@7.1.0)(pg@8.20.0)(vitest@4.1.0(@types/node@25.5.0)(vite@8.0.0(@types/node@25.5.0)(esbuild@0.25.12)(tsx@4.21.0)(yaml@2.8.2)))
       dockerode: 4.0.9
       drizzle-orm: 0.45.1(@types/pg@8.18.0)(kysely@0.28.12)(pg@8.20.0)
+      handlebars: 4.7.8
       hono: 4.12.8
       js-yaml: 4.1.1
       pg: 8.20.0
@@ -2889,6 +2909,15 @@ snapshots:
     dependencies:
       resolve-pkg-maps: 1.0.0
 
+  handlebars@4.7.8:
+    dependencies:
+      minimist: 1.2.8
+      neo-async: 2.6.2
+      source-map: 0.6.1
+      wordwrap: 1.0.0
+    optionalDependencies:
+      uglify-js: 3.19.3
+
   hono@4.12.8: {}
 
   ieee754@1.2.1: {}
@@ -2983,6 +3012,8 @@ snapshots:
 
   memory-pager@1.5.0: {}
 
+  minimist@1.2.8: {}
+
   mkdirp-classic@0.5.3: {}
 
   mongodb-connection-string-url@7.0.1:
@@ -3004,6 +3035,8 @@ snapshots:
   nanoid@3.3.11: {}
 
   nanostores@1.1.1: {}
+
+  neo-async@2.6.2: {}
 
   obug@2.1.1: {}
 
@@ -3266,6 +3299,9 @@ snapshots:
 
   typescript@5.9.3: {}
 
+  uglify-js@3.19.3:
+    optional: true
+
   undici-types@5.26.5: {}
 
   undici-types@7.18.2: {}
@@ -3364,6 +3400,8 @@ snapshots:
       stack-trace: 0.0.10
       triple-beam: 1.4.1
       winston-transport: 4.9.0
+
+  wordwrap@1.0.0: {}
 
   wrap-ansi@7.0.0:
     dependencies:
