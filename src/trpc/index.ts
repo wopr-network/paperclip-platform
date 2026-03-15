@@ -5,7 +5,8 @@
  * Only includes routers that the platform-ui-core dashboard actually consumes.
  */
 
-import { router } from "@wopr-network/platform-core/trpc";
+import { getTenantUpdateConfigRepo } from "@wopr-network/platform-core/fleet";
+import { createFleetUpdateConfigRouter, router } from "@wopr-network/platform-core/trpc";
 import { billingRouter } from "./routers/billing.js";
 import { fleetRouter } from "./routers/fleet.js";
 import { orgRouter } from "./routers/org.js";
@@ -16,6 +17,7 @@ import { settingsRouter } from "./routers/settings.js";
 export const appRouter = router({
   billing: billingRouter,
   fleet: fleetRouter,
+  fleetUpdateConfig: createFleetUpdateConfigRouter(getTenantUpdateConfigRepo()),
   org: orgRouter,
   profile: profileRouter,
   settings: settingsRouter,
