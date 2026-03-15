@@ -21,21 +21,15 @@ import { pageContextRouter } from "./routers/page-context.js";
 import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 
-let _notificationTemplateRepo: DrizzleNotificationTemplateRepository | undefined;
-function getNotificationTemplateRepo(): DrizzleNotificationTemplateRepository {
-  if (!_notificationTemplateRepo) {
-    // DrizzleNotificationTemplateRepository accepts PgDatabase<never> (schema-agnostic);
-    // our getDb() returns PgDatabase<PgQueryResultHKT, PlatformSchema> — structurally compatible.
-    _notificationTemplateRepo = new DrizzleNotificationTemplateRepository(getDb() as unknown as PgDatabase<never>);
-  }
-  return _notificationTemplateRepo;
-}
-
 export const appRouter = router({
   billing: billingRouter,
   fleet: fleetRouter,
   fleetUpdateConfig: createFleetUpdateConfigRouter(() => getTenantUpdateConfigRepo()),
-  notificationTemplates: createNotificationTemplateRouter(() => getNotificationTemplateRepo()),
+  // TODO: Add getNotificationTemplateRepo() to platform-core/fleet/services.ts
+  // and use it here instead of inline DrizzleNotificationTemplateRepository construction.
+  notificationTemplates: createNotificationTemplateRouter(() => {
+    return new DrizzleNotificationTemplateRepository(getDb() as unknown as PgDatabase<never>);
+  }),
   org: orgRouter,
   profile: profileRouter,
   settings: settingsRouter,
