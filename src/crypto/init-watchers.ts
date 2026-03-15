@@ -35,6 +35,8 @@ export interface InitCryptoWatchersOpts {
   cursorStore: DrizzleWatcherCursorStore;
   db: DrizzleDb;
   evmXpub?: string;
+  /** EVM RPC URL for shared Chainlink oracle (reads price feeds for all native coins). */
+  evmRpcUrl?: string;
   /** Poll interval for watchers (ms). Default: 15000. */
   pollIntervalMs?: number;
   /** How often to re-read DB for new/changed methods (ms). Default: 60000. */
@@ -73,6 +75,10 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
     pollIntervalMs = 15_000,
     refreshIntervalMs = 60_000,
   } = opts;
+
+  // Shared Chainlink oracle for all native-coin watchers (ETH, BTC, LTC, DOGE, etc.)
+  // Reads price feeds from Base/Ethereum — not from the coin's native chain.
+  const sharedOracle = opts.evmRpcUrl ? new ChainlinkOracle({ rpcCall: createRpcCaller(opts.evmRpcUrl) }) : null;
 
   const watchers = new Map<string, ActiveWatcher>();
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -121,11 +127,14 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
     }
 
     if (method.type === "native" && method.token.toUpperCase() === "ETH") {
-      const oracle = new ChainlinkOracle({ rpcCall });
+      if (!sharedOracle) {
+        log.warn("No EVM RPC for Chainlink oracle — skipping ETH watcher");
+        return null;
+      }
       const watcher = new EthWatcher({
         chain,
         rpcCall,
-        oracle,
+        oracle: sharedOracle,
         fromBlock: 0,
         cursorStore,
         onPayment: async (event: EthPaymentEvent) => {
@@ -143,49 +152,49 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
       };
     }
 
-    if (method.type === "native" && method.token.toUpperCase() === "BTC") {
+    // UTXO chains: BTC, LTC, DOGE (all use bitcoind-compatible RPC API)
+    const UTXO_CHAINS = ["bitcoin", "litecoin", "dogecoin"];
+    if (method.type === "native" && UTXO_CHAINS.includes(method.chain)) {
+      if (!sharedOracle) {
+        log.warn(`No EVM RPC for Chainlink oracle — skipping ${method.token} watcher`);
+        return null;
+      }
       // Parse rpcUser:rpcPassword from URL: http://user:pass@host:port
       const parsed = new URL(rpcUrl);
       const rpcUser = decodeURIComponent(parsed.username);
       const rpcPassword = decodeURIComponent(parsed.password);
       if (!rpcUser || !rpcPassword) {
-        log.warn(`BTC rpc_url must include credentials (http://user:pass@host:port) — skipping ${method.id}`);
+        log.warn(
+          `${method.token} rpc_url must include credentials (http://user:pass@host:port) — skipping ${method.id}`,
+        );
         return null;
       }
-      // Strip credentials from URL for the RPC caller
       parsed.username = "";
       parsed.password = "";
       const cleanUrl = parsed.toString().replace(/\/$/, "");
 
-      const btcConfig = {
+      const utxoConfig = {
         rpcUrl: cleanUrl,
         rpcUser,
         rpcPassword,
-        network: (method.chain === "bitcoin" ? "mainnet" : method.chain) as "mainnet" | "testnet" | "regtest",
+        network: "mainnet" as "mainnet" | "testnet" | "regtest",
         confirmations: method.confirmations,
       };
-      const btcRpc = createBitcoindRpc(btcConfig);
-      // ETH oracle on same EVM RPC for BTC/USD price feed
-      const evmRpc = opts.evmXpub ? createRpcCaller(process.env.EVM_RPC_BASE ?? "") : null;
-      const oracle = evmRpc ? new ChainlinkOracle({ rpcCall: evmRpc }) : null;
-      if (!oracle) {
-        log.warn(`No EVM_RPC_BASE for Chainlink BTC/USD oracle — skipping BTC watcher`);
-        return null;
-      }
+      const utxoRpc = createBitcoindRpc(utxoConfig);
 
       const watcher = new BtcWatcher({
-        config: btcConfig,
-        rpcCall: btcRpc,
+        config: utxoConfig,
+        rpcCall: utxoRpc,
         watchedAddresses: [],
-        oracle,
+        oracle: sharedOracle,
         cursorStore,
         onPayment: async (event: BtcPaymentEvent) => {
-          log.info(`BTC payment detected: ${event.txid} (${event.amountSats} sats)`);
+          log.info(`${method.token} payment detected: ${event.txid} (${event.amountSats} sats)`);
           const result = await settleBtcPayment(settlerDeps, event);
-          log.info(`Settled BTC: ${result.status} (${result.creditedCents ?? 0}c)`);
+          log.info(`Settled ${method.token}: ${result.status} (${result.creditedCents ?? 0}c)`);
         },
       });
-      log.info(`Created BTC watcher: ${watcherId}`);
+      log.info(`Created ${method.token} watcher: ${watcherId}`);
       return {
         id: watcherId,
         poll: () => watcher.poll(),
@@ -262,7 +271,9 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         }
         watcher.setAddresses(addresses);
       }
-      log.info(`Address refresh: ${rows.length} active charges, ${totalAddresses} addresses across ${watchers.size} watchers`);
+      log.info(
+        `Address refresh: ${rows.length} active charges, ${totalAddresses} addresses across ${watchers.size} watchers`,
+      );
     } catch (err) {
       log.error("Failed to refresh deposit addresses", { error: err });
     }
@@ -278,7 +289,9 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
     for (const [id, watcher] of watchers) {
       try {
         log.info(`Polling: ${id}`);
-        const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("poll timeout (10s)")), 10_000));
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("poll timeout (10s)")), 10_000),
+        );
         await Promise.race([watcher.poll(), timeout]);
         log.info(`Polled: ${id} OK (cursor now: ${watcher.getCursor?.() ?? "?"})`);
       } catch (err) {
