@@ -199,7 +199,10 @@ async function main() {
           eventEmitter: sharedEventEmitter,
           onManualTenantsSkipped: (tenantIds) => {
             // Notify manual-mode tenants that an update is available (best-effort)
-            if (!_notificationService || !_emailResolver) return;
+            if (!_notificationService || !_emailResolver) {
+              logger.warn("onManualTenantsSkipped fired before notification pipeline ready", { tenantIds });
+              return;
+            }
             const svc = _notificationService;
             const resolver = _emailResolver;
             for (const tenantId of tenantIds) {

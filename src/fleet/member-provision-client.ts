@@ -62,7 +62,7 @@ export class MemberProvisionClient {
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        logger.error("Member provision call failed", {
+        logger.warn("Member provision call failed", {
           path,
           status: res.status,
           text,
@@ -71,11 +71,9 @@ export class MemberProvisionClient {
       }
       return { success: true };
     } catch (err) {
-      logger.error("Member provision call error", {
-        path,
-        error: (err as Error).message,
-      });
-      return { success: false, error: (err as Error).message };
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn("Member provision call error", { path, error: message });
+      return { success: false, error: message };
     }
   }
 }

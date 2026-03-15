@@ -72,12 +72,11 @@ export const orgRouter = router({
 
   /** Accept an organization invite by token. */
   acceptInvite: protectedProcedure.input(z.object({ token: z.string().min(1) })).mutation(async ({ ctx, input }) => {
-    const { orgService } = deps();
+    const { orgService, provisionSecret } = deps();
     const result = (await orgService.acceptInvite(input.token, ctx.user.id)) as { orgId: string; role: string };
     const { orgId, role } = result;
 
     // Sync new member to running Paperclip instance (best-effort)
-    const { provisionSecret } = deps();
     if (provisionSecret) {
       resolveOrgInstance(orgId)
         .then((instance) => {
@@ -85,11 +84,7 @@ export const orgRouter = router({
           const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "";
           const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
           const client = new MemberProvisionClient(provisionSecret);
-          return client
-            .addMember(instance.instanceUrl, instance.companyId, { id: ctx.user.id, email, name }, role)
-            .then((r) => {
-              if (!r.success) logger.warn("Provision addMember failed (non-blocking)", { orgId, error: r.error });
-            });
+          return client.addMember(instance.instanceUrl, instance.companyId, { id: ctx.user.id, email, name }, role);
         })
         .catch((err) => logger.error("Could not resolve instance for provision", { orgId, err }));
     }
@@ -188,10 +183,7 @@ export const orgRouter = router({
           .then((instance) => {
             if (!instance) return;
             const client = new MemberProvisionClient(provisionSecret);
-            return client.changeRole(instance.instanceUrl, instance.companyId, input.userId, input.role).then((r) => {
-              if (!r.success)
-                logger.warn("Provision changeRole failed (non-blocking)", { orgId: input.orgId, error: r.error });
-            });
+            return client.changeRole(instance.instanceUrl, instance.companyId, input.userId, input.role);
           })
           .catch((err) => logger.error("Could not resolve instance for provision", { orgId: input.orgId, err }));
       }
@@ -212,10 +204,7 @@ export const orgRouter = router({
           .then((instance) => {
             if (!instance) return;
             const client = new MemberProvisionClient(provisionSecret);
-            return client.removeMember(instance.instanceUrl, instance.companyId, input.userId).then((r) => {
-              if (!r.success)
-                logger.warn("Provision removeMember failed (non-blocking)", { orgId: input.orgId, error: r.error });
-            });
+            return client.removeMember(instance.instanceUrl, instance.companyId, input.userId);
           })
           .catch((err) => logger.error("Could not resolve instance for provision", { orgId: input.orgId, err }));
       }
