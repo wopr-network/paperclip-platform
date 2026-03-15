@@ -46,7 +46,7 @@ export interface InitCryptoWatchersOpts {
 interface ActiveWatcher {
   id: string;
   poll: () => Promise<void>;
-  setAddresses: (addresses: string[]) => void;
+  setAddresses: (addresses: string[]) => void | Promise<void>;
   getCursor?: () => number;
 }
 
@@ -194,11 +194,28 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
           log.info(`Settled ${method.token}: ${result.status} (${result.creditedCents ?? 0}c)`);
         },
       });
+      // Track imported addresses so we only import new ones (importAddress is slow)
+      const importedAddresses = new Set<string>();
       log.info(`Created ${method.token} watcher: ${watcherId}`);
       return {
         id: watcherId,
         poll: () => watcher.poll(),
-        setAddresses: (a) => watcher.setWatchedAddresses(a),
+        setAddresses: async (addresses) => {
+          watcher.setWatchedAddresses(addresses);
+          // Import new addresses into the UTXO wallet (watch-only, no rescan)
+          for (const addr of addresses) {
+            if (!importedAddresses.has(addr)) {
+              try {
+                await watcher.importAddress(addr);
+                importedAddresses.add(addr);
+              } catch (err) {
+                log.error(`Failed to import address ${addr} into ${method.token} wallet`, {
+                  error: (err as Error).message,
+                });
+              }
+            }
+          }
+        },
       };
     }
 
@@ -269,7 +286,7 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         if (addresses.length > 0) {
           log.info(`Setting ${addresses.length} address(es) on ${id}: ${addresses.join(", ")}`);
         }
-        watcher.setAddresses(addresses);
+        await watcher.setAddresses(addresses);
       }
       log.info(
         `Address refresh: ${rows.length} active charges, ${totalAddresses} addresses across ${watchers.size} watchers`,
