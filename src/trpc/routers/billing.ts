@@ -45,6 +45,7 @@ import {
   tenantProcedure,
 } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
+import { getOrgMemberRepo } from "../../fleet/services.js";
 
 // ---------------------------------------------------------------------------
 // Schedule interval → hours mapping
@@ -200,6 +201,28 @@ function deps(): BillingRouterDeps {
 }
 
 // ---------------------------------------------------------------------------
+// Org role gate — billing mutations require admin/owner role
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert the caller is an admin or owner of the tenant org.
+ * For personal tenants (tenantId === userId), this is a no-op.
+ * Mirrors the pattern used in fleet.ts.
+ */
+async function assertBillingAdmin(tenantId: string, userId: string): Promise<void> {
+  if (tenantId === userId) return; // personal tenant — no org role check needed
+  const repo = getOrgMemberRepo();
+  if (!repo) {
+    logger.warn("assertBillingAdmin: org member repo not wired, skipping role check", { tenantId, userId });
+    return;
+  }
+  const member = await repo.findMember(tenantId, userId);
+  if (!member || (member.role !== "owner" && member.role !== "admin")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Organization admin access required" });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -286,6 +309,7 @@ export const billingRouter = router({
       if (input.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
+      await assertBillingAdmin(tenant, ctx.user.id);
       try {
         assertSafeRedirectUrl(input.successUrl);
         assertSafeRedirectUrl(input.cancelUrl);
@@ -319,6 +343,7 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
+      await assertBillingAdmin(tenant, ctx.user.id);
       const { cryptoChargeRepo, evmXpub, priceOracle, paymentMethodStore } = deps();
       if (!cryptoChargeRepo || !evmXpub || !priceOracle || !paymentMethodStore) {
         throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
@@ -427,6 +452,7 @@ export const billingRouter = router({
       if (input.tenant && input.tenant !== ctx.tenantId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Access denied" });
       }
+      await assertBillingAdmin(tenant, ctx.user.id);
       try {
         assertSafeRedirectUrl(input.returnUrl);
       } catch {
@@ -520,6 +546,7 @@ export const billingRouter = router({
     .input(z.object({ tier: z.enum(["free", "starter", "pro", "enterprise"]) }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
+      await assertBillingAdmin(tenant, ctx.user.id);
       const { tenantRepo } = deps();
       await tenantRepo.setTier(tenant, input.tier);
       return { tier: input.tier };
@@ -538,6 +565,7 @@ export const billingRouter = router({
     .input(z.object({ mode: z.enum(["byok", "hosted"]) }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
+      await assertBillingAdmin(tenant, ctx.user.id);
       const { tenantRepo } = deps();
       await tenantRepo.setInferenceMode(tenant, input.mode);
       return { mode: input.mode };
@@ -659,6 +687,7 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
+      await assertBillingAdmin(tenant, ctx.user.id);
       const { spendingLimitsRepo } = deps();
       await spendingLimitsRepo.upsert(tenant, input);
       return await spendingLimitsRepo.get(tenant);
@@ -707,6 +736,7 @@ export const billingRouter = router({
     .input(z.object({ email: z.string().email() }))
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
+      await assertBillingAdmin(tenant, ctx.user.id);
       const { tenantRepo, processor } = deps();
       const mapping = await tenantRepo.getByTenant(tenant);
 
@@ -721,6 +751,7 @@ export const billingRouter = router({
   /** Remove a payment method. */
   removePaymentMethod: tenantProcedure.input(z.object({ id: z.string().min(1) })).mutation(async ({ input, ctx }) => {
     const tenant = ctx.tenantId;
+    await assertBillingAdmin(tenant, ctx.user.id);
     const { processor, creditLedger, tenantRepo } = deps();
 
     const { PaymentMethodOwnershipError } = await import("@wopr-network/platform-core/billing");
@@ -821,6 +852,7 @@ export const billingRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
+      await assertBillingAdmin(tenant, ctx.user.id);
       const { autoTopupSettingsStore, processor, auditLogger } = deps();
 
       const enablingUsage = input.usage_enabled === true;
@@ -1013,6 +1045,7 @@ export const billingRouter = router({
 
   /** Apply a coupon code to grant promotion credits. */
   applyCoupon: tenantProcedure.input(z.object({ code: z.string().min(1).max(50) })).mutation(async ({ input, ctx }) => {
+    await assertBillingAdmin(ctx.tenantId, ctx.user.id);
     const { promotionEngine } = deps();
     if (!promotionEngine) {
       throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Promotion engine not initialized" });
