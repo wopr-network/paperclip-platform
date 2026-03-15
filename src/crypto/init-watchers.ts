@@ -233,8 +233,12 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         const id = makeWatcherId(method);
         seenIds.add(id);
         if (!watchers.has(id)) {
-          const w = await createWatcher(method);
-          if (w) watchers.set(id, w);
+          try {
+            const w = await createWatcher(method);
+            if (w) watchers.set(id, w);
+          } catch (err) {
+            log.error(`Failed to create watcher for ${id}`, { error: (err as Error).message });
+          }
         }
       }
 
