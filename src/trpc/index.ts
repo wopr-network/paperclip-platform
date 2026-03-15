@@ -21,7 +21,10 @@ import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 
 export const appRouter = router({
-  adminFleetUpdate: createAdminFleetUpdateRouter(() => getRolloutOrchestrator(), () => getTenantUpdateConfigRepo()),
+  adminFleetUpdate: createAdminFleetUpdateRouter(
+    () => getRolloutOrchestrator(),
+    () => getTenantUpdateConfigRepo(),
+  ),
   billing: billingRouter,
   fleet: fleetRouter,
   fleetUpdateConfig: createFleetUpdateConfigRouter(() => getTenantUpdateConfigRepo()),
