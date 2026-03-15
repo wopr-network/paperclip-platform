@@ -227,7 +227,7 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
       const { cryptoCharges } = await import("@wopr-network/platform-core/db/schema/crypto");
       const { isNull, isNotNull, and } = await import("drizzle-orm");
       const rows = await db
-        .select({
+        .selectDistinct({
           chain: cryptoCharges.chain,
           address: cryptoCharges.depositAddress,
         })

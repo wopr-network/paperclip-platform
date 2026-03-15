@@ -184,7 +184,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     logger.info(`Received ${signal}, shutting down`);
     stopHealthMonitor();
     if (cryptoWatcherHandle) {
-      cryptoWatcherHandle.stop();
+      try {
+        cryptoWatcherHandle.stop();
+      } catch (err) {
+        logger.error("Error stopping crypto watchers", { error: err });
+      }
     }
     if (fleetUpdaterHandle) {
       fleetUpdaterHandle.stop().catch(() => {});
@@ -404,6 +408,6 @@ async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").Dr
       evmXpub,
     });
   } catch (err) {
-    logger.warn("Crypto watchers failed to start", { error: (err as Error).message });
+    logger.warn("Crypto watchers failed to start", { error: err });
   }
 }
