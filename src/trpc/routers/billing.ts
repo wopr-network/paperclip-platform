@@ -302,6 +302,13 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
+  /** Public: list enabled payment methods for checkout UI. */
+  supportedPaymentMethods: publicProcedure.query(async () => {
+    const { paymentMethodStore } = deps();
+    if (!paymentMethodStore) return [];
+    return paymentMethodStore.listEnabled();
+  }),
+
   /** Unified crypto checkout — works with any enabled payment method. */
   checkout: tenantProcedure
     .input(
