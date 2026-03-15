@@ -8,77 +8,74 @@
 
 import { logger } from "../log.js";
 
+export interface MemberProvisionResult {
+  success: boolean;
+  error?: string;
+}
+
 export class MemberProvisionClient {
   constructor(private readonly provisionSecret: string) {}
 
   async addMember(
     instanceUrl: string,
-    params: {
-      companyId: string;
-      user: { id: string; email: string; name: string };
-      role: string;
-    },
-  ): Promise<void> {
-    const res = await fetch(`${instanceUrl}/internal/members/add`, {
-      signal: AbortSignal.timeout(30_000),
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.provisionSecret}`,
-      },
-      body: JSON.stringify(params),
+    companyId: string,
+    user: { id: string; email: string; name?: string },
+    role: string,
+  ): Promise<MemberProvisionResult> {
+    return this.call(instanceUrl, "/internal/members/add", {
+      companyId,
+      user,
+      role,
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      logger.warn("Provision addMember failed", { instanceUrl, status: res.status, body });
-      throw new Error(`Provision addMember failed: ${res.status}`);
-    }
   }
 
-  async removeMember(
-    instanceUrl: string,
-    params: {
-      companyId: string;
-      userId: string;
-    },
-  ): Promise<void> {
-    const res = await fetch(`${instanceUrl}/internal/members/remove`, {
-      signal: AbortSignal.timeout(30_000),
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.provisionSecret}`,
-      },
-      body: JSON.stringify(params),
+  async removeMember(instanceUrl: string, companyId: string, userId: string): Promise<MemberProvisionResult> {
+    return this.call(instanceUrl, "/internal/members/remove", {
+      companyId,
+      userId,
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      logger.warn("Provision removeMember failed", { instanceUrl, status: res.status, body });
-      throw new Error(`Provision removeMember failed: ${res.status}`);
-    }
   }
 
   async changeRole(
     instanceUrl: string,
-    params: {
-      companyId: string;
-      userId: string;
-      role: string;
-    },
-  ): Promise<void> {
-    const res = await fetch(`${instanceUrl}/internal/members/change-role`, {
-      signal: AbortSignal.timeout(30_000),
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.provisionSecret}`,
-      },
-      body: JSON.stringify(params),
+    companyId: string,
+    userId: string,
+    newRole: string,
+  ): Promise<MemberProvisionResult> {
+    return this.call(instanceUrl, "/internal/members/change-role", {
+      companyId,
+      userId,
+      role: newRole,
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      logger.warn("Provision changeRole failed", { instanceUrl, status: res.status, body });
-      throw new Error(`Provision changeRole failed: ${res.status}`);
+  }
+
+  private async call(instanceUrl: string, path: string, body: Record<string, unknown>): Promise<MemberProvisionResult> {
+    try {
+      const res = await fetch(`${instanceUrl}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.provisionSecret}`,
+        },
+        signal: AbortSignal.timeout(30_000),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        logger.error("Member provision call failed", {
+          path,
+          status: res.status,
+          text,
+        });
+        return { success: false, error: `HTTP ${res.status}: ${text}` };
+      }
+      return { success: true };
+    } catch (err) {
+      logger.error("Member provision call error", {
+        path,
+        error: (err as Error).message,
+      });
+      return { success: false, error: (err as Error).message };
     }
   }
 }
