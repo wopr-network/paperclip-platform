@@ -1,8 +1,10 @@
 /**
  * Run platform-core Drizzle migrations against the Postgres database.
- * Uses the migration files shipped with @wopr-network/platform-core.
+ * Uses the migration files shipped with @wopr-network/platform-core,
+ * followed by local paperclip-platform migrations (drizzle/migrations/).
  */
 
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import * as schema from "@wopr-network/platform-core/db/schema/index";
@@ -21,4 +23,10 @@ export async function runMigrations(pool: pg.Pool): Promise<void> {
   const coreRoot = path.resolve(path.dirname(coreMain), "..");
   const migrationsFolder = path.resolve(coreRoot, "drizzle/migrations");
   await migrate(db, { migrationsFolder });
+
+  // Run local paperclip-platform migrations (notification_queue, notification_preferences, etc.)
+  const localMigrationsDir = path.resolve(process.cwd(), "drizzle/migrations");
+  if (existsSync(localMigrationsDir)) {
+    await migrate(db, { migrationsFolder: localMigrationsDir });
+  }
 }
