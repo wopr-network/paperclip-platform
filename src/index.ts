@@ -510,6 +510,7 @@ async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").Dr
       cursorStore,
       db,
       evmXpub,
+      evmRpcUrl: evmRpcBase,
     });
   } catch (err) {
     logger.warn("Crypto watchers failed to start", { error: err });

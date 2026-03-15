@@ -45,6 +45,7 @@ interface ActiveWatcher {
   id: string;
   poll: () => Promise<void>;
   setAddresses: (addresses: string[]) => void;
+  getCursor?: () => number;
 }
 
 /**
@@ -115,6 +116,7 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         id: watcherId,
         poll: () => watcher.poll(),
         setAddresses: (a) => watcher.setWatchedAddresses(a),
+        getCursor: () => watcher.cursor,
       };
     }
 
@@ -250,27 +252,40 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
       }
 
       // Update each watcher with its chain's addresses
+      let totalAddresses = 0;
       for (const [id, watcher] of watchers) {
-        // Extract chain from watcher id (format: type:chain:token)
         const chain = id.split(":")[1];
         const addresses = byChain.get(chain ?? "") ?? [];
+        totalAddresses += addresses.length;
+        if (addresses.length > 0) {
+          log.info(`Setting ${addresses.length} address(es) on ${id}: ${addresses.join(", ")}`);
+        }
         watcher.setAddresses(addresses);
       }
+      log.info(`Address refresh: ${rows.length} active charges, ${totalAddresses} addresses across ${watchers.size} watchers`);
     } catch (err) {
-      log.error("Failed to refresh deposit addresses", { error: (err as Error).message });
+      log.error("Failed to refresh deposit addresses", { error: err });
     }
   }
 
   async function pollAll(): Promise<void> {
-    if (stopped) return;
+    if (stopped) {
+      log.warn("pollAll skipped — stopped flag is set");
+      return;
+    }
+    log.info(`Poll cycle starting (${watchers.size} watchers)`);
     await refreshAddresses();
     for (const [id, watcher] of watchers) {
       try {
-        await watcher.poll();
+        log.info(`Polling: ${id}`);
+        const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("poll timeout (10s)")), 10_000));
+        await Promise.race([watcher.poll(), timeout]);
+        log.info(`Polled: ${id} OK (cursor now: ${watcher.getCursor?.() ?? "?"})`);
       } catch (err) {
         log.error(`Watcher poll failed: ${id}`, { error: (err as Error).message });
       }
     }
+    log.info("Poll cycle complete");
   }
 
   // Startup
