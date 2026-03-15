@@ -5,8 +5,9 @@
  * Only includes routers that the platform-ui-core dashboard actually consumes.
  */
 
-import { getTenantUpdateConfigRepo } from "@wopr-network/platform-core/fleet";
+import { getRolloutOrchestrator, getTenantUpdateConfigRepo } from "@wopr-network/platform-core/fleet";
 import {
+  createAdminFleetUpdateRouter,
   createFleetUpdateConfigRouter,
   createNotificationTemplateRouter,
   router,
@@ -20,6 +21,10 @@ import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 
 export const appRouter = router({
+  adminFleetUpdate: createAdminFleetUpdateRouter(
+    () => getRolloutOrchestrator(),
+    () => getTenantUpdateConfigRepo(),
+  ),
   billing: billingRouter,
   fleet: fleetRouter,
   fleetUpdateConfig: createFleetUpdateConfigRouter(() => getTenantUpdateConfigRepo()),
