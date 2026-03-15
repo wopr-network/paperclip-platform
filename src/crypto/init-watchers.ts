@@ -6,14 +6,17 @@ import type {
   PaymentMethodRecord,
 } from "@wopr-network/platform-core/billing";
 import {
+  BtcWatcher,
   ChainlinkOracle,
+  createBitcoindRpc,
   createRpcCaller,
   EvmWatcher,
   EthWatcher,
+  settleBtcPayment,
   settleEvmPayment,
   settleEthPayment,
 } from "@wopr-network/platform-core/billing";
-import type { EvmPaymentEvent, EthPaymentEvent } from "@wopr-network/platform-core/billing";
+import type { BtcPaymentEvent, EvmPaymentEvent, EthPaymentEvent } from "@wopr-network/platform-core/billing";
 import type { DrizzleDb } from "@wopr-network/platform-core/db";
 import { logger } from "../log.js";
 
@@ -137,8 +140,53 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
     }
 
     if (method.type === "native" && method.token.toUpperCase() === "BTC") {
-      log.info(`BTC watcher not yet wired — skipping ${method.id}`);
-      return null;
+      // Parse rpcUser:rpcPassword from URL: http://user:pass@host:port
+      const parsed = new URL(rpcUrl);
+      const rpcUser = decodeURIComponent(parsed.username);
+      const rpcPassword = decodeURIComponent(parsed.password);
+      if (!rpcUser || !rpcPassword) {
+        log.warn(`BTC rpc_url must include credentials (http://user:pass@host:port) — skipping ${method.id}`);
+        return null;
+      }
+      // Strip credentials from URL for the RPC caller
+      parsed.username = "";
+      parsed.password = "";
+      const cleanUrl = parsed.toString().replace(/\/$/, "");
+
+      const btcConfig = {
+        rpcUrl: cleanUrl,
+        rpcUser,
+        rpcPassword,
+        network: (method.chain === "bitcoin" ? "mainnet" : method.chain) as "mainnet" | "testnet" | "regtest",
+        confirmations: method.confirmations,
+      };
+      const btcRpc = createBitcoindRpc(btcConfig);
+      // ETH oracle on same EVM RPC for BTC/USD price feed
+      const evmRpc = opts.evmXpub ? createRpcCaller(process.env.EVM_RPC_BASE ?? "") : null;
+      const oracle = evmRpc ? new ChainlinkOracle({ rpcCall: evmRpc }) : null;
+      if (!oracle) {
+        log.warn(`No EVM_RPC_BASE for Chainlink BTC/USD oracle — skipping BTC watcher`);
+        return null;
+      }
+
+      const watcher = new BtcWatcher({
+        config: btcConfig,
+        rpcCall: btcRpc,
+        watchedAddresses: [],
+        oracle,
+        cursorStore,
+        onPayment: async (event: BtcPaymentEvent) => {
+          log.info(`BTC payment detected: ${event.txid} (${event.amountSats} sats)`);
+          const result = await settleBtcPayment(settlerDeps, event);
+          log.info(`Settled BTC: ${result.status} (${result.creditedCents ?? 0}c)`);
+        },
+      });
+      log.info(`Created BTC watcher: ${watcherId}`);
+      return {
+        id: watcherId,
+        poll: () => watcher.poll(),
+        setAddresses: (a) => watcher.setWatchedAddresses(a),
+      };
     }
 
     log.warn(`Unknown method type ${method.type}/${method.token} — skipping`);
