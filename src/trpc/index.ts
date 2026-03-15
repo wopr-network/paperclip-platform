@@ -5,8 +5,15 @@
  * Only includes routers that the platform-ui-core dashboard actually consumes.
  */
 
+import { DrizzleNotificationTemplateRepository } from "@wopr-network/platform-core/email";
 import { getTenantUpdateConfigRepo } from "@wopr-network/platform-core/fleet";
-import { createFleetUpdateConfigRouter, router } from "@wopr-network/platform-core/trpc";
+import {
+  createFleetUpdateConfigRouter,
+  createNotificationTemplateRouter,
+  router,
+} from "@wopr-network/platform-core/trpc";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import { getDb } from "../db/index.js";
 import { billingRouter } from "./routers/billing.js";
 import { fleetRouter } from "./routers/fleet.js";
 import { orgRouter } from "./routers/org.js";
@@ -18,6 +25,11 @@ export const appRouter = router({
   billing: billingRouter,
   fleet: fleetRouter,
   fleetUpdateConfig: createFleetUpdateConfigRouter(() => getTenantUpdateConfigRepo()),
+  // TODO: Add getNotificationTemplateRepo() to platform-core/fleet/services.ts
+  // and use it here instead of inline DrizzleNotificationTemplateRepository construction.
+  notificationTemplates: createNotificationTemplateRouter(() => {
+    return new DrizzleNotificationTemplateRepository(getDb() as unknown as PgDatabase<never>);
+  }),
   org: orgRouter,
   profile: profileRouter,
   settings: settingsRouter,

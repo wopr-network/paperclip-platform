@@ -48,6 +48,22 @@ async function main() {
       await runMigrations(pool);
       logger.info("Database migrations complete");
 
+      // Seed notification templates (idempotent — skips existing)
+      try {
+        const { DEFAULT_TEMPLATES, DrizzleNotificationTemplateRepository } = await import(
+          "@wopr-network/platform-core/email"
+        );
+        const templateRepo = new DrizzleNotificationTemplateRepository(
+          db as unknown as import("drizzle-orm/pg-core").PgDatabase<never>,
+        );
+        const seeded = await templateRepo.seed(DEFAULT_TEMPLATES);
+        if (seeded > 0) logger.info(`Seeded ${seeded} notification templates`);
+      } catch (seedErr) {
+        logger.warn("Notification template seeding failed (non-fatal)", {
+          error: (seedErr as Error).message,
+        });
+      }
+
       // Wire credit ledger FIRST (needed by onUserCreated hook below)
       const { DrizzleLedger, grantSignupCredits } = await import("@wopr-network/platform-core/credits");
       const creditLedger = new DrizzleLedger(db);
