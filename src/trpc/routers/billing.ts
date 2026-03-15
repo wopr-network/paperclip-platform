@@ -212,7 +212,10 @@ function deps(): BillingRouterDeps {
 async function assertBillingAdmin(tenantId: string, userId: string): Promise<void> {
   if (tenantId === userId) return; // personal tenant — no org role check needed
   const repo = getOrgMemberRepo();
-  if (!repo) return; // org repo not wired — skip check (dev mode)
+  if (!repo) {
+    logger.warn("assertBillingAdmin: org member repo not wired, skipping role check", { tenantId, userId });
+    return;
+  }
   const member = await repo.findMember(tenantId, userId);
   if (!member || (member.role !== "owner" && member.role !== "admin")) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Organization admin access required" });
