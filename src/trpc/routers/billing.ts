@@ -37,7 +37,13 @@ import type { ISpendingLimitsRepository } from "@wopr-network/platform-core/mone
 import type { CreditPriceMap, ITenantCustomerRepository } from "@wopr-network/platform-core/monetization/index";
 import type { PromotionEngine } from "@wopr-network/platform-core/monetization/promotions/engine";
 import { assertSafeRedirectUrl } from "@wopr-network/platform-core/security";
-import { protectedProcedure, publicProcedure, router, tenantProcedure } from "@wopr-network/platform-core/trpc";
+import {
+  adminProcedure,
+  protectedProcedure,
+  publicProcedure,
+  router,
+  tenantProcedure,
+} from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
@@ -340,14 +346,14 @@ export const billingRouter = router({
   }),
 
   /** Admin: list all payment methods (including disabled). */
-  adminListPaymentMethods: protectedProcedure.query(async () => {
+  adminListPaymentMethods: adminProcedure.query(async () => {
     const { paymentMethodStore } = deps();
     if (!paymentMethodStore) return [];
     return paymentMethodStore.listAll();
   }),
 
   /** Admin: upsert a payment method. */
-  adminUpsertPaymentMethod: protectedProcedure
+  adminUpsertPaymentMethod: adminProcedure
     .input(
       z.object({
         id: z.string().min(1).max(64),
@@ -360,13 +366,13 @@ export const billingRouter = router({
         enabled: z.boolean(),
         displayOrder: z.number().int().min(0),
         rpcUrl: z.string().nullable(),
-        oracleAddress: z.string().nullable().optional(),
-        xpub: z.string().nullable().optional(),
+        oracleAddress: z.string().min(1).nullable().optional(),
+        xpub: z.string().min(1).nullable().optional(),
         confirmations: z.number().int().min(1),
       }),
     )
-    .mutation(async ({ input }) => {
-      const { paymentMethodStore } = deps();
+    .mutation(async ({ input, ctx }) => {
+      const { paymentMethodStore, auditLogger } = deps();
       if (!paymentMethodStore) {
         throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment method store not configured" });
       }
@@ -375,18 +381,34 @@ export const billingRouter = router({
         oracleAddress: input.oracleAddress ?? null,
         xpub: input.xpub ?? null,
       });
+      await auditLogger?.log({
+        userId: ctx.user.id,
+        authMethod: "session",
+        action: "config.update",
+        resourceType: "billing",
+        resourceId: input.id,
+        details: input,
+      });
       return { ok: true };
     }),
 
   /** Admin: toggle a payment method on/off. */
-  adminTogglePaymentMethod: protectedProcedure
+  adminTogglePaymentMethod: adminProcedure
     .input(z.object({ id: z.string().min(1), enabled: z.boolean() }))
-    .mutation(async ({ input }) => {
-      const { paymentMethodStore } = deps();
+    .mutation(async ({ input, ctx }) => {
+      const { paymentMethodStore, auditLogger } = deps();
       if (!paymentMethodStore) {
         throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment method store not configured" });
       }
       await paymentMethodStore.setEnabled(input.id, input.enabled);
+      await auditLogger?.log({
+        userId: ctx.user.id,
+        authMethod: "session",
+        action: "config.update",
+        resourceType: "billing",
+        resourceId: input.id,
+        details: { enabled: input.enabled },
+      });
       return { ok: true };
     }),
 
