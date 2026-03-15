@@ -76,7 +76,7 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
     refreshIntervalMs = 60_000,
   } = opts;
 
-  // Shared Chainlink oracle for all native-coin watchers (ETH, BTC, LTC, etc.)
+  // Shared Chainlink oracle for all native-coin watchers (ETH, BTC, LTC, DOGE, etc.)
   // Reads price feeds from Base/Ethereum — not from the coin's native chain.
   const sharedOracle = opts.evmRpcUrl ? new ChainlinkOracle({ rpcCall: createRpcCaller(opts.evmRpcUrl) }) : null;
 
@@ -128,7 +128,7 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
 
     if (method.type === "native" && method.token.toUpperCase() === "ETH") {
       if (!sharedOracle) {
-        log.warn(`No EVM RPC for Chainlink oracle — skipping ETH watcher`);
+        log.warn("No EVM RPC for Chainlink oracle — skipping ETH watcher");
         return null;
       }
       const watcher = new EthWatcher({
@@ -152,9 +152,9 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
       };
     }
 
-    // UTXO chains: BTC, LTC (same bitcoind-compatible RPC API)
-    const UTXO_COINS = ["BTC", "LTC"];
-    if (method.type === "native" && UTXO_COINS.includes(method.token.toUpperCase())) {
+    // UTXO chains: BTC, LTC, DOGE (all use bitcoind-compatible RPC API)
+    const UTXO_CHAINS = ["bitcoin", "litecoin", "dogecoin"];
+    if (method.type === "native" && UTXO_CHAINS.includes(method.chain)) {
       if (!sharedOracle) {
         log.warn(`No EVM RPC for Chainlink oracle — skipping ${method.token} watcher`);
         return null;
@@ -177,10 +177,7 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         rpcUrl: cleanUrl,
         rpcUser,
         rpcPassword,
-        network: (method.chain === "bitcoin" || method.chain === "litecoin" ? "mainnet" : method.chain) as
-          | "mainnet"
-          | "testnet"
-          | "regtest",
+        network: "mainnet" as "mainnet" | "testnet" | "regtest",
         confirmations: method.confirmations,
       };
       const utxoRpc = createBitcoindRpc(utxoConfig);
@@ -274,7 +271,9 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         }
         watcher.setAddresses(addresses);
       }
-      log.info(`Address refresh: ${rows.length} active charges, ${totalAddresses} addresses across ${watchers.size} watchers`);
+      log.info(
+        `Address refresh: ${rows.length} active charges, ${totalAddresses} addresses across ${watchers.size} watchers`,
+      );
     } catch (err) {
       log.error("Failed to refresh deposit addresses", { error: err });
     }
@@ -290,7 +289,9 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
     for (const [id, watcher] of watchers) {
       try {
         log.info(`Polling: ${id}`);
-        const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("poll timeout (10s)")), 10_000));
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("poll timeout (10s)")), 10_000),
+        );
         await Promise.race([watcher.poll(), timeout]);
         log.info(`Polled: ${id} OK (cursor now: ${watcher.getCursor?.() ?? "?"})`);
       } catch (err) {
