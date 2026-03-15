@@ -18,13 +18,13 @@ import {
   getCreditLedger,
   getDocker,
   getNodeRegistry,
-  getOrgMemberRepo,
   getPlacementStrategy,
   getProfileStore,
   getServiceKeyRepo,
 } from "../../fleet/services.js";
 import { logger } from "../../log.js";
 import { registerRoute, removeRoute } from "../../proxy/fleet-resolver.js";
+import { assertOrgAdminOrOwner } from "../auth-helpers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -40,21 +40,6 @@ function getFleetForInstance(instanceId: string) {
 /** Derive tenantId from context — personal org uses userId as tenantId. */
 function tenantFromCtx(ctx: { user: { id: string }; tenantId: string | undefined }): string {
   return ctx.tenantId ?? ctx.user.id;
-}
-
-/**
- * Assert the user is an admin or owner of the given org.
- * When orgId is not provided (personal tenant), this is a no-op.
- * TODO: Replace with orgAdminProcedure import once platform-core >= 1.16.0 is published.
- */
-async function assertOrgAdmin(orgId: string | undefined, userId: string): Promise<void> {
-  if (!orgId) return; // personal tenant — no org role check needed
-  const repo = getOrgMemberRepo();
-  if (!repo) return; // org repo not wired — skip check (dev mode)
-  const member = await repo.findMember(orgId, userId);
-  if (!member || (member.role !== "owner" && member.role !== "admin")) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Organization admin access required" });
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -138,8 +123,8 @@ export const fleetRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await assertOrgAdmin(input.orgId, ctx.user.id);
       const tenant = input.orgId ?? tenantFromCtx(ctx);
+      await assertOrgAdminOrOwner(tenant, ctx.user.id);
       const config = getConfig();
 
       // Billing gate
@@ -363,8 +348,8 @@ export const fleetRouter = router({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await assertOrgAdmin(input.orgId, ctx.user.id);
       const tenant = input.orgId ?? tenantFromCtx(ctx);
+      await assertOrgAdminOrOwner(tenant, ctx.user.id);
       const store = getProfileStore();
       const profile = await store.get(input.id);
       if (!profile) {
