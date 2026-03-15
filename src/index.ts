@@ -1,10 +1,10 @@
 import { serve } from "@hono/node-server";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import type { FleetUpdaterHandle } from "@wopr-network/platform-core/fleet";
-import type { CryptoWatcherHandle } from "./crypto/init-watchers.js";
 import { initFleetUpdater, setRolloutOrchestrator, setVolumeSnapshotManager } from "@wopr-network/platform-core/fleet";
 import { app } from "./app.js";
 import { getConfig } from "./config.js";
+import type { CryptoWatcherHandle } from "./crypto/init-watchers.js";
 import { startHealthMonitor, stopHealthMonitor } from "./fleet/health-monitor.js";
 import { hydrateRoutes } from "./fleet/hydrate.js";
 import {
