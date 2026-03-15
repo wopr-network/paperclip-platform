@@ -221,17 +221,21 @@ async function main() {
           const templateRepo = new DrizzleNotificationTemplateRepository(pgDb);
           const renderer = new HandlebarsRenderer(templateRepo);
 
-          // Log renderer availability for debugging (renderer wired for future use)
-          void renderer;
-
           const notificationService = new NotificationService(queueStore, config.APP_BASE_URL);
 
           const worker = new NotificationWorker({
             queue: queueStore,
             emailClient,
             preferences: prefsStore,
+            handlebarsRenderer: renderer,
           });
 
+          // Drain any queued notifications from before restart
+          worker.processBatch().catch((err: unknown) => {
+            logger.error("Notification worker error (initial run)", {
+              error: (err as Error).message,
+            });
+          });
           // Poll every 30 seconds
           notificationWorkerTimer = setInterval(() => {
             worker.processBatch().catch((err: unknown) => {
@@ -243,30 +247,14 @@ async function main() {
 
           // Wire fleet event → email notifications
           if (sharedEventEmitter) {
-            const { sql } = await import("drizzle-orm");
+            const { DrizzleBetterAuthEmailResolver } = await import("./services/drizzle-email-resolver.js");
+            const emailResolver = new DrizzleBetterAuthEmailResolver(pgDb);
 
             fleetNotificationUnsubscribe = fleetMod.initFleetNotificationListener({
               eventEmitter: sharedEventEmitter,
               notificationService,
               preferences: prefsStore,
-              resolveEmail: async (tenantId: string): Promise<string | null> => {
-                type EmailRow = { email: string };
-                type QueryResult = { rows: EmailRow[] };
-                try {
-                  const result = (await db.execute(
-                    sql`SELECT email FROM "user" WHERE id = ${tenantId} LIMIT 1`,
-                  )) as QueryResult;
-                  if (result.rows.length > 0) return result.rows[0].email;
-
-                  // If tenantId is an org, find the org owner
-                  const orgResult = (await db.execute(
-                    sql`SELECT u.email FROM "member" m JOIN "user" u ON u.id = m."userId" WHERE m."organizationId" = ${tenantId} AND m.role = 'owner' LIMIT 1`,
-                  )) as QueryResult;
-                  return orgResult.rows.length > 0 ? orgResult.rows[0].email : null;
-                } catch {
-                  return null;
-                }
-              },
+              resolveEmail: (tenantId) => emailResolver.resolveEmail(tenantId),
             });
             logger.info("Fleet notification listener started");
           }
