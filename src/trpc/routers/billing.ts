@@ -360,6 +360,8 @@ export const billingRouter = router({
         enabled: z.boolean(),
         displayOrder: z.number().int().min(0),
         rpcUrl: z.string().nullable(),
+        oracleAddress: z.string().nullable().optional(),
+        xpub: z.string().nullable().optional(),
         confirmations: z.number().int().min(1),
       }),
     )
@@ -368,7 +370,11 @@ export const billingRouter = router({
       if (!paymentMethodStore) {
         throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment method store not configured" });
       }
-      await paymentMethodStore.upsert(input);
+      await paymentMethodStore.upsert({
+        ...input,
+        oracleAddress: input.oracleAddress ?? null,
+        xpub: input.xpub ?? null,
+      });
       return { ok: true };
     }),
 
