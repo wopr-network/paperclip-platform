@@ -13,7 +13,9 @@ const mockFleetCreate = vi.fn();
 const mockFleetStart = vi.fn();
 let ledgerEnabled = true;
 
-const mockFleet = { create: mockFleetCreate, start: mockFleetStart };
+const mockInstance = { start: mockFleetStart };
+const mockFleetGetInstance = vi.fn().mockResolvedValue(mockInstance);
+const mockFleet = { create: mockFleetCreate, start: mockFleetStart, getInstance: mockFleetGetInstance };
 
 vi.mock("../fleet/services.js", () => ({
   getCreditLedger: () => (ledgerEnabled ? { balance: mockBalance } : null),
