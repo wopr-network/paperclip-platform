@@ -102,7 +102,8 @@ provisionWebhookRoutes.post("/create", async (c) => {
   });
 
   // 2. Start the container
-  await fleet.start(profile.id);
+  const instance = await fleet.getInstance(profile.id);
+  await instance.start();
 
   // Track container → node assignment
   registry.assignContainer(profile.id, targetNode.config.id);

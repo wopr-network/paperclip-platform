@@ -237,7 +237,7 @@ export const fleetRouter = router({
       // FleetManager mounts volumeName at /data; PAPERCLIP_HOME=/data above
       // tells the Paperclip app to use that path for embedded PG + instance state.
       const volumeName = `paperclip-${input.name}`;
-      const profile = await fleet.create({
+      const createdInstance = await fleet.create({
         tenantId: tenant,
         name: input.name,
         description: input.description ?? `Paperclip instance: ${input.name}`,
@@ -248,6 +248,7 @@ export const fleetRouter = router({
         releaseChannel: "stable",
         updatePolicy: "manual",
       });
+      const profile = createdInstance.profile;
 
       // Init volume permissions — chown /data to node (uid 1000) so the
       // non-root container can write to it (embedded PG, logs, etc.)
@@ -267,7 +268,8 @@ export const fleetRouter = router({
       }
 
       // Start the container
-      await fleet.start(profile.id);
+      const inst = await fleet.getInstance(profile.id);
+      await inst.start();
 
       // Connect container to the compose network so it's DNS-reachable
       if (config.FLEET_DOCKER_NETWORK) {
@@ -319,8 +321,11 @@ export const fleetRouter = router({
 
           // Persist Paperclip company ID in profile so member provisioning can resolve it
           if (provisionResult.tenantEntityId) {
-            profile.env = { ...profile.env, PAPERCLIP_COMPANY_ID: provisionResult.tenantEntityId };
-            await store.save(profile);
+            const currentProfile = await store.get(profile.id);
+            if (currentProfile) {
+              currentProfile.env = { ...currentProfile.env, PAPERCLIP_COMPANY_ID: provisionResult.tenantEntityId };
+              await store.save(currentProfile);
+            }
           }
         } catch (err) {
           logger.warn(`Provision call failed for ${input.name} (container is running but unconfigured)`, { err });
@@ -363,12 +368,16 @@ export const fleetRouter = router({
       const registry = getNodeRegistry();
 
       switch (input.action) {
-        case "start":
-          await fleet.start(input.id);
+        case "start": {
+          const instance = await fleet.getInstance(input.id);
+          await instance.start();
           break;
-        case "stop":
-          await fleet.stop(input.id);
+        }
+        case "stop": {
+          const instance = await fleet.getInstance(input.id);
+          await instance.stop();
           break;
+        }
         case "restart":
           await fleet.restart(input.id);
           break;
