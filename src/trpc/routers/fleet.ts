@@ -378,9 +378,12 @@ export const fleetRouter = router({
           await instance.stop();
           break;
         }
-        case "restart":
-          await fleet.restart(input.id);
+        case "restart": {
+          const instance = await fleet.getInstance(input.id);
+          await instance.stop();
+          await instance.start();
           break;
+        }
         case "destroy": {
           const keyRepo = getServiceKeyRepo();
           if (keyRepo) await keyRepo.revokeByInstance(input.id);
