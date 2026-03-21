@@ -1,51 +1,56 @@
+import { timingSafeEqual } from "node:crypto";
+
 import type { CryptoWebhookPayload } from "@wopr-network/platform-core/billing";
-import { handleCryptoWebhook, verifyCryptoWebhookSignature } from "@wopr-network/platform-core/billing";
+import { handleCryptoWebhook } from "@wopr-network/platform-core/billing";
 import { Hono } from "hono";
+import { getConfig } from "../config.js";
 import { logger } from "../log.js";
 
 export const cryptoWebhookRoutes = new Hono();
 
 /** Deps injected at startup (after DB init). */
 let _deps: Parameters<typeof handleCryptoWebhook>[0] | null = null;
-let _webhookSecret: string | null = null;
 
-export function setCryptoWebhookDeps(deps: Parameters<typeof handleCryptoWebhook>[0], webhookSecret: string): void {
+export function setCryptoWebhookDeps(deps: Parameters<typeof handleCryptoWebhook>[0]): void {
   _deps = deps;
-  _webhookSecret = webhookSecret;
+}
+
+/** Validate the Bearer token against the provision secret (timing-safe). */
+function assertSecret(authHeader: string | undefined): boolean {
+  const secret = getConfig().PROVISION_SECRET;
+  if (!authHeader?.startsWith("Bearer ")) return false;
+  const token = authHeader.slice("Bearer ".length).trim();
+  if (token.length !== secret.length) return false;
+  return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
 }
 
 /**
  * POST /api/webhooks/crypto
  *
- * BTCPay Server sends InvoiceSettled (and other) events here.
- * Signature verified via BTCPAY-SIG header (HMAC-SHA256).
+ * Crypto key server sends payment confirmations here.
+ * The key server authenticates via service key (Bearer token).
  */
 cryptoWebhookRoutes.post("/", async (c) => {
-  if (!_deps || !_webhookSecret) {
+  if (!assertSecret(c.req.header("authorization"))) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  if (!_deps) {
     logger.warn("Crypto webhook received but handler not configured");
     return c.json({ error: "Crypto payments not configured" }, 501);
   }
 
-  // Read raw body for signature verification.
-  const rawBody = await c.req.text();
-  const sig = c.req.header("BTCPAY-SIG");
-
-  if (!sig || !verifyCryptoWebhookSignature(rawBody, sig, _webhookSecret)) {
-    logger.warn("Crypto webhook signature verification failed");
-    return c.json({ error: "Invalid signature" }, 401);
-  }
-
   let payload: CryptoWebhookPayload;
   try {
-    payload = JSON.parse(rawBody) as CryptoWebhookPayload;
+    payload = (await c.req.json()) as CryptoWebhookPayload;
   } catch {
     return c.json({ error: "Invalid JSON" }, 400);
   }
 
   logger.info("Crypto webhook received", {
-    type: payload.type,
-    invoiceId: payload.invoiceId,
-    isRedelivery: payload.isRedelivery,
+    chargeId: payload.chargeId,
+    chain: payload.chain,
+    status: payload.status,
   });
 
   const result = await handleCryptoWebhook(_deps, payload);
@@ -54,7 +59,7 @@ cryptoWebhookRoutes.post("/", async (c) => {
     logger.info("Crypto payment credited", {
       tenant: result.tenant,
       creditedCents: result.creditedCents,
-      invoiceId: payload.invoiceId,
+      chargeId: payload.chargeId,
     });
   }
 

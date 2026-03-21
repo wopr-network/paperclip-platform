@@ -11,6 +11,8 @@
  * - NodeRegistry + PlacementStrategy for multi-node container placement
  */
 
+import { timingSafeEqual } from "node:crypto";
+
 import { checkHealth, deprovisionContainer, provisionContainer, updateBudget } from "@wopr-network/provision-client";
 import { Hono } from "hono";
 import { getConfig } from "../config.js";
@@ -26,12 +28,13 @@ import { registerRoute, removeRoute } from "../proxy/fleet-resolver.js";
 
 export const provisionWebhookRoutes = new Hono();
 
-/** Validate the internal provision secret. */
+/** Validate the internal provision secret (timing-safe). */
 function assertSecret(authHeader: string | undefined): boolean {
   const secret = getConfig().PROVISION_SECRET;
   if (!authHeader?.startsWith("Bearer ")) return false;
   const token = authHeader.slice("Bearer ".length).trim();
-  return token === secret;
+  if (token.length !== secret.length) return false;
+  return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
 }
 
 /**
