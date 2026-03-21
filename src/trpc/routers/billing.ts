@@ -13,8 +13,8 @@ import type {
   IPaymentProcessor,
 } from "@wopr-network/platform-core/billing";
 import {
-  type BTCPayClient,
   ChainlinkOracle,
+  type CryptoServiceClient,
   createRpcCaller,
   createUnifiedCheckout,
   type IPriceOracle,
@@ -154,7 +154,7 @@ export interface BillingRouterDeps {
   dividendRepo: IDividendRepository;
   spendingLimitsRepo: ISpendingLimitsRepository;
   affiliateRepo: IAffiliateRepository;
-  cryptoClient?: BTCPayClient;
+  cryptoClient?: CryptoServiceClient;
   cryptoChargeRepo?: ICryptoChargeRepository;
   evmXpub?: string;
   priceOracle?: IPriceOracle;
@@ -169,9 +169,9 @@ export function setBillingRouterDeps(deps: BillingRouterDeps): void {
   _deps = deps;
 }
 
-/** Wire crypto deps after initial billing setup (BTCPay may init independently of Stripe). */
+/** Wire crypto deps after initial billing setup (crypto may init independently of Stripe). */
 export function setCryptoBillingDeps(
-  cryptoClient: BTCPayClient,
+  cryptoClient: CryptoServiceClient,
   cryptoChargeRepo: ICryptoChargeRepository,
   evmXpub?: string,
   evmRpcUrl?: string,

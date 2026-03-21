@@ -496,34 +496,34 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
 }
 
 // ---------------------------------------------------------------------------
-// BTCPay crypto webhook wiring
+// Crypto key-server webhook wiring
 // ---------------------------------------------------------------------------
 
 async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").DrizzleDb, creditLedger: ILedger) {
-  const apiKey = process.env.BTCPAY_API_KEY;
-  const baseUrl = process.env.BTCPAY_BASE_URL;
-  const storeId = process.env.BTCPAY_STORE_ID;
-  const webhookSecret = process.env.BTCPAY_WEBHOOK_SECRET;
+  const {
+    CryptoServiceClient,
+    loadCryptoConfig,
+    DrizzleCryptoChargeRepository,
+    DrizzlePaymentMethodStore,
+    DrizzleWebhookSeenRepository,
+  } = await import("@wopr-network/platform-core/billing");
 
-  if (!apiKey || !baseUrl || !storeId || !webhookSecret) {
-    logger.warn(
-      "BTCPay not fully configured — crypto payments disabled (need BTCPAY_API_KEY, BTCPAY_BASE_URL, BTCPAY_STORE_ID, BTCPAY_WEBHOOK_SECRET)",
-    );
+  const cryptoConfig = loadCryptoConfig();
+  if (!cryptoConfig) {
+    logger.warn("Crypto service not configured — crypto payments disabled (set CRYPTO_SERVICE_URL)");
     return;
   }
 
-  const { BTCPayClient, DrizzleCryptoChargeRepository, DrizzlePaymentMethodStore, DrizzleWebhookSeenRepository } =
-    await import("@wopr-network/platform-core/billing");
   const { setCryptoWebhookDeps } = await import("./routes/crypto-webhook.js");
   const { setCryptoBillingDeps } = await import("./trpc/routers/billing.js");
 
-  const cryptoClient = new BTCPayClient({ apiKey, baseUrl, storeId });
+  const cryptoClient = new CryptoServiceClient(cryptoConfig);
   const cryptoChargeRepo = new DrizzleCryptoChargeRepository(db);
   const replayGuard = new DrizzleWebhookSeenRepository(db);
   const paymentMethodStore = new DrizzlePaymentMethodStore(db);
 
   // Wire webhook route deps (for POST /api/webhooks/crypto)
-  setCryptoWebhookDeps({ chargeStore: cryptoChargeRepo, creditLedger, replayGuard }, webhookSecret);
+  setCryptoWebhookDeps({ chargeStore: cryptoChargeRepo, creditLedger, replayGuard });
 
   // Wire unified checkout + payment method registry
   const evmXpub = process.env.EVM_XPUB;
