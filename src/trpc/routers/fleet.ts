@@ -6,7 +6,7 @@
  * to scope all operations.
  */
 
-import { randomBytes } from "node:crypto";
+
 import { TRPCError } from "@trpc/server";
 import { getUserEmail } from "@wopr-network/platform-core/email";
 import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
@@ -208,10 +208,10 @@ export const fleetRouter = router({
         HOST: "0.0.0.0",
         NODE_ENV: "production",
         WOPR_PROVISION_SECRET: config.PROVISION_SECRET,
-        BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
+        BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET ?? "",
         PAPERCLIP_HOME: "/data",
         PAPERCLIP_HOSTED_MODE: "true",
-        PAPERCLIP_DEPLOYMENT_MODE: "authenticated",
+        PAPERCLIP_DEPLOYMENT_MODE: "hosted_proxy",
         PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
         PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         PAPERCLIP_ALLOWED_HOSTNAMES: allowedHostnames.join(","),
