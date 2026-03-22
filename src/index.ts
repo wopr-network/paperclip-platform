@@ -474,6 +474,11 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
   const { DrizzleMeterEventRepository, MeterEmitter } = await import("@wopr-network/platform-core/metering");
   const { DrizzleBudgetChecker } = await import("@wopr-network/platform-core/monetization");
 
+  // Warm the DB-backed model cache so first request doesn't miss.
+  const { resolveGatewayModel, warmModelCache, setAdminRouterDeps } = await import("./trpc/routers/admin.js");
+  setAdminRouterDeps({ db });
+  await warmModelCache();
+
   const meter = new MeterEmitter(new DrizzleMeterEventRepository(db), {
     walPath: `${config.FLEET_DATA_DIR}/meter-wal`,
     dlqPath: `${config.FLEET_DATA_DIR}/meter-dlq`,
@@ -491,10 +496,12 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
       openrouter: { apiKey: config.OPENROUTER_API_KEY },
     },
     resolveServiceKey: (key) => serviceKeyRepo.resolve(key),
-  });
+    // DB-backed model resolver — requires platform-core #131
+    ...(resolveGatewayModel ? { resolveDefaultModel: resolveGatewayModel } : {}),
+  } as Parameters<typeof mountGateway>[1]);
 
   logger.info("Inference gateway mounted at /v1 (OpenRouter)", {
-    defaultModel: config.GATEWAY_DEFAULT_MODEL ?? "(client-specified)",
+    defaultModel: config.GATEWAY_DEFAULT_MODEL ?? "(DB-backed)",
   });
 }
 

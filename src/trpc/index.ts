@@ -13,6 +13,7 @@ import {
   router,
 } from "@wopr-network/platform-core/trpc";
 import { getNotificationTemplateRepo } from "../services/notification-template-repo.js";
+import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
 import { fleetRouter } from "./routers/fleet.js";
 import { orgRouter } from "./routers/org.js";
@@ -21,6 +22,7 @@ import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 
 export const appRouter = router({
+  admin: adminRouter,
   adminFleetUpdate: createAdminFleetUpdateRouter(
     () => getRolloutOrchestrator(),
     () => getTenantUpdateConfigRepo(),
@@ -43,6 +45,7 @@ export type { TRPCContext } from "@wopr-network/platform-core/trpc";
 export { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 
 // Re-export dep setters for initialization
+export { setAdminRouterDeps } from "./routers/admin.js";
 export { setBillingRouterDeps } from "./routers/billing.js";
 export { setOrgRouterDeps } from "./routers/org.js";
 export { setPageContextRouterDeps } from "./routers/page-context.js";
