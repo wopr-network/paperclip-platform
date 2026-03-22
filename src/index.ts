@@ -490,9 +490,14 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
       openrouter: { apiKey: config.OPENROUTER_API_KEY },
     },
     resolveServiceKey: (key) => serviceKeyRepo.resolve(key),
-  });
+    // Single-model pricing: override client model with platform-chosen model.
+    // Requires platform-core with defaultModel support (PR #130).
+    ...(config.GATEWAY_DEFAULT_MODEL ? { defaultModel: config.GATEWAY_DEFAULT_MODEL } : {}),
+  } as Parameters<typeof mountGateway>[1]);
 
-  logger.info("Inference gateway mounted at /v1 (OpenRouter)");
+  logger.info("Inference gateway mounted at /v1 (OpenRouter)", {
+    defaultModel: config.GATEWAY_DEFAULT_MODEL ?? "(client-specified)",
+  });
 }
 
 // ---------------------------------------------------------------------------
