@@ -292,7 +292,7 @@ export const fleetRouter = router({
       // Wait for the container to become healthy, then provision it
       const containerUrl = `http://${upstreamHost}:${containerPort}`;
       let healthy = false;
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 30; i++) {
         if (await checkHealth(containerUrl)) {
           healthy = true;
           break;
