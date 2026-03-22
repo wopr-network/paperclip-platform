@@ -486,13 +486,16 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
     meter,
     budgetChecker,
     creditLedger,
+    defaultModel: config.GATEWAY_DEFAULT_MODEL,
     providers: {
       openrouter: { apiKey: config.OPENROUTER_API_KEY },
     },
     resolveServiceKey: (key) => serviceKeyRepo.resolve(key),
   });
 
-  logger.info("Inference gateway mounted at /v1 (OpenRouter)");
+  logger.info("Inference gateway mounted at /v1 (OpenRouter)", {
+    defaultModel: config.GATEWAY_DEFAULT_MODEL ?? "(client-specified)",
+  });
 }
 
 // ---------------------------------------------------------------------------

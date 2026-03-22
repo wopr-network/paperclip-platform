@@ -94,6 +94,13 @@ const envSchema = z.object({
    */
   OPENROUTER_API_KEY: z.string().optional(),
 
+  /**
+   * Force all LLM gateway requests to this model, ignoring client model field.
+   * When set, the gateway rewrites body.model before forwarding to OpenRouter.
+   * Example: "deepseek/deepseek-v3.2"
+   */
+  GATEWAY_DEFAULT_MODEL: z.string().optional(),
+
   /** Resend API key for transactional email (notification pipeline). */
   RESEND_API_KEY: z.string().optional(),
 
