@@ -17,31 +17,48 @@ export interface OrgInstance {
 /**
  * Find the running Paperclip instance for an org.
  * Returns null if no instance exists or the container is unhealthy.
+ *
+ * @deprecated Use {@link resolveOrgInstances} — an org can own multiple instances.
  */
 export async function resolveOrgInstance(orgId: string): Promise<OrgInstance | null> {
+  const instances = await resolveOrgInstances(orgId);
+  return instances[0] ?? null;
+}
+
+/**
+ * Find ALL running Paperclip instances for an org.
+ * An org can own multiple instances — member changes must sync to every one.
+ */
+export async function resolveOrgInstances(orgId: string): Promise<OrgInstance[]> {
   const store = getProfileStore();
   const profiles = await store.list();
-  const profile = profiles.find((p) => p.tenantId === orgId);
-  if (!profile) {
-    logger.debug("No fleet profile found for org", { orgId });
-    return null;
-  }
-
-  const companyId = profile.env?.PAPERCLIP_COMPANY_ID;
-  if (!companyId) {
-    logger.debug("Fleet profile missing PAPERCLIP_COMPANY_ID", { orgId, profileId: profile.id });
-    return null;
+  const orgProfiles = profiles.filter((p) => p.tenantId === orgId);
+  if (orgProfiles.length === 0) {
+    logger.debug("No fleet profiles found for org", { orgId });
+    return [];
   }
 
   const routes = getProxyManager().getRoutes();
-  const route = routes.find((r) => r.instanceId === profile.id);
-  if (!route || !route.healthy) {
-    logger.debug("No healthy route for fleet profile", { orgId, profileId: profile.id });
-    return null;
+  const instances: OrgInstance[] = [];
+
+  for (const profile of orgProfiles) {
+    const companyId = profile.env?.PAPERCLIP_COMPANY_ID;
+    if (!companyId) {
+      logger.debug("Fleet profile missing PAPERCLIP_COMPANY_ID", { orgId, profileId: profile.id });
+      continue;
+    }
+
+    const route = routes.find((r) => r.instanceId === profile.id);
+    if (!route || !route.healthy) {
+      logger.debug("No healthy route for fleet profile", { orgId, profileId: profile.id });
+      continue;
+    }
+
+    instances.push({
+      instanceUrl: `http://${route.upstreamHost}:${route.upstreamPort}`,
+      companyId,
+    });
   }
 
-  return {
-    instanceUrl: `http://${route.upstreamHost}:${route.upstreamPort}`,
-    companyId,
-  };
+  return instances;
 }

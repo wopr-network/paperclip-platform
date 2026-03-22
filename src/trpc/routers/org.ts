@@ -16,7 +16,7 @@ import type { OrgService } from "@wopr-network/platform-core/tenancy";
 import { orgMemberProcedure, protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { z } from "zod";
 import { MemberProvisionClient } from "../../fleet/member-provision-client.js";
-import { resolveOrgInstance } from "../../fleet/org-instance-resolver.js";
+import { resolveOrgInstances } from "../../fleet/org-instance-resolver.js";
 import { logger } from "../../log.js";
 
 // ---------------------------------------------------------------------------
@@ -76,17 +76,21 @@ export const orgRouter = router({
     const result = (await orgService.acceptInvite(input.token, ctx.user.id)) as { orgId: string; role: string };
     const { orgId, role } = result;
 
-    // Sync new member to running Paperclip instance (best-effort)
+    // Sync new member to ALL running Paperclip instances for this org (best-effort)
     if (provisionSecret) {
-      resolveOrgInstance(orgId)
-        .then((instance) => {
-          if (!instance) return;
+      resolveOrgInstances(orgId)
+        .then((instances) => {
+          if (instances.length === 0) return;
           const name = ("name" in ctx.user ? (ctx.user.name as string | undefined) : undefined) ?? "";
           const email = ("email" in ctx.user ? (ctx.user.email as string | undefined) : undefined) ?? "";
           const client = new MemberProvisionClient(provisionSecret);
-          return client.addMember(instance.instanceUrl, instance.companyId, { id: ctx.user.id, email, name }, role);
+          return Promise.allSettled(
+            instances.map((inst) =>
+              client.addMember(inst.instanceUrl, inst.companyId, { id: ctx.user.id, email, name }, role),
+            ),
+          );
         })
-        .catch((err) => logger.error("Could not resolve instance for provision", { orgId, err }));
+        .catch((err) => logger.error("Could not resolve instances for provision", { orgId, err }));
     }
 
     return { orgId, role };
@@ -177,15 +181,17 @@ export const orgRouter = router({
       const { orgService, provisionSecret } = deps();
       await orgService.changeRole(input.orgId, ctx.user.id, input.userId, input.role);
 
-      // Sync role change to running Paperclip instance (best-effort)
+      // Sync role change to ALL running Paperclip instances (best-effort)
       if (provisionSecret) {
-        resolveOrgInstance(input.orgId)
-          .then((instance) => {
-            if (!instance) return;
+        resolveOrgInstances(input.orgId)
+          .then((instances) => {
+            if (instances.length === 0) return;
             const client = new MemberProvisionClient(provisionSecret);
-            return client.changeRole(instance.instanceUrl, instance.companyId, input.userId, input.role);
+            return Promise.allSettled(
+              instances.map((inst) => client.changeRole(inst.instanceUrl, inst.companyId, input.userId, input.role)),
+            );
           })
-          .catch((err) => logger.error("Could not resolve instance for provision", { orgId: input.orgId, err }));
+          .catch((err) => logger.error("Could not resolve instances for provision", { orgId: input.orgId, err }));
       }
 
       return { updated: true };
@@ -198,15 +204,17 @@ export const orgRouter = router({
       const { orgService, provisionSecret } = deps();
       await orgService.removeMember(input.orgId, ctx.user.id, input.userId);
 
-      // Sync removal to running Paperclip instance (best-effort)
+      // Sync removal to ALL running Paperclip instances (best-effort)
       if (provisionSecret) {
-        resolveOrgInstance(input.orgId)
-          .then((instance) => {
-            if (!instance) return;
+        resolveOrgInstances(input.orgId)
+          .then((instances) => {
+            if (instances.length === 0) return;
             const client = new MemberProvisionClient(provisionSecret);
-            return client.removeMember(instance.instanceUrl, instance.companyId, input.userId);
+            return Promise.allSettled(
+              instances.map((inst) => client.removeMember(inst.instanceUrl, inst.companyId, input.userId)),
+            );
           })
-          .catch((err) => logger.error("Could not resolve instance for provision", { orgId: input.orgId, err }));
+          .catch((err) => logger.error("Could not resolve instances for provision", { orgId: input.orgId, err }));
       }
 
       return { removed: true };
