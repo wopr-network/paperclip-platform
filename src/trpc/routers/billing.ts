@@ -396,6 +396,7 @@ export const billingRouter = router({
         oracleAddress: input.oracleAddress ?? null,
         xpub: input.xpub ?? null,
         addressType: input.addressType ?? "evm",
+        iconUrl: null,
       });
       await auditLogger?.log({
         userId: ctx.user.id,
