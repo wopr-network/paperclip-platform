@@ -98,6 +98,10 @@ provisionWebhookRoutes.post("/create", async (c) => {
     env: {
       PORT: String(config.PAPERCLIP_CONTAINER_PORT),
       WOPR_PROVISION_SECRET: config.PROVISION_SECRET,
+      PAPERCLIP_HOSTED_MODE: "true",
+      PAPERCLIP_DEPLOYMENT_MODE: "hosted_proxy",
+      PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
+      PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
     },
     restartPolicy: "unless-stopped",
     releaseChannel: "stable",

@@ -44,7 +44,7 @@ const envSchema = z.object({
    * Docker image to use for Paperclip containers.
    * e.g. "ghcr.io/paperclipai/server:latest"
    */
-  PAPERCLIP_IMAGE: z.string().default("ghcr.io/paperclipai/server:latest"),
+  PAPERCLIP_IMAGE: z.string().default("ghcr.io/wopr-network/paperclip:managed"),
 
   /**
    * Port that Paperclip containers listen on internally.
