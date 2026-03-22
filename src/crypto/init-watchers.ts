@@ -110,6 +110,9 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         rpcCall,
         fromBlock: 0,
         cursorStore,
+        contractAddress: method.contractAddress,
+        decimals: method.decimals,
+        confirmations: method.confirmations,
         onPayment: async (event: EvmPaymentEvent) => {
           log.info(`ERC-20 payment detected: ${event.token} ${event.txHash}`);
           const result = await settleEvmPayment(settlerDeps, event);
@@ -137,6 +140,7 @@ export function initCryptoWatchers(opts: InitCryptoWatchersOpts): CryptoWatcherH
         oracle: sharedOracle,
         fromBlock: 0,
         cursorStore,
+        confirmations: method.confirmations,
         onPayment: async (event: EthPaymentEvent) => {
           log.info(`ETH payment detected: ${event.txHash}`);
           const result = await settleEthPayment(settlerDeps, event);
