@@ -211,7 +211,7 @@ export const fleetRouter = router({
         BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
         PAPERCLIP_HOME: "/data",
         PAPERCLIP_HOSTED_MODE: "true",
-        PAPERCLIP_DEPLOYMENT_MODE: "authenticated",
+        PAPERCLIP_DEPLOYMENT_MODE: "hosted_proxy",
         PAPERCLIP_DEPLOYMENT_EXPOSURE: "private",
         PAPERCLIP_MIGRATION_AUTO_APPLY: "true",
         PAPERCLIP_ALLOWED_HOSTNAMES: allowedHostnames.join(","),
