@@ -291,8 +291,39 @@ export const fleetRouter = router({
 
       // Wait for the container to become healthy, then provision it
       const containerUrl = `http://${upstreamHost}:${containerPort}`;
+
+      // Helper: provision the container once healthy
+      const doProvision = async () => {
+        const pool = getPool();
+        const dbEmail = await getUserEmail(pool, ctx.user.id);
+        const userEmail = dbEmail ?? `${input.name}@runpaperclip.com`;
+        const dbNameRow = await pool.query(`SELECT name FROM "user" WHERE id = $1`, [ctx.user.id]);
+        const userName = (dbNameRow.rows[0]?.name as string | undefined) ?? input.name;
+        const result = await provisionContainer(containerUrl, config.PROVISION_SECRET, {
+          tenantId: tenant,
+          tenantName: input.name,
+          gatewayUrl: config.GATEWAY_URL,
+          apiKey: gatewayKey ?? "",
+          budgetCents: 0,
+          adminUser: { id: ctx.user.id, email: userEmail, name: userName },
+          agents: [{ name: "CEO", role: "ceo", title: "Chief Executive Officer" }],
+        });
+        logger.info(`Provisioned instance ${input.name}: tenantEntityId=${result.tenantEntityId}`);
+
+        // Persist Paperclip company ID in profile so member provisioning can resolve it
+        if (result.tenantEntityId) {
+          const currentProfile = await store.get(profile.id);
+          if (currentProfile) {
+            currentProfile.env = { ...currentProfile.env, PAPERCLIP_COMPANY_ID: result.tenantEntityId };
+            await store.save(currentProfile);
+          }
+        }
+        return result;
+      };
+
+      // Wait up to 90s for the container to become healthy (containers can take 60s+ to boot)
       let healthy = false;
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 45; i++) {
         if (await checkHealth(containerUrl)) {
           healthy = true;
           break;
@@ -300,38 +331,29 @@ export const fleetRouter = router({
         await new Promise((r) => setTimeout(r, 2000));
       }
 
-      let provisionResult: { tenantEntityId?: string } = {};
       if (healthy) {
         try {
-          const pool = getPool();
-          const dbEmail = await getUserEmail(pool, ctx.user.id);
-          const userEmail = dbEmail ?? `${input.name}@runpaperclip.com`;
-          const dbNameRow = await pool.query(`SELECT name FROM "user" WHERE id = $1`, [ctx.user.id]);
-          const userName = (dbNameRow.rows[0]?.name as string | undefined) ?? input.name;
-          provisionResult = await provisionContainer(containerUrl, config.PROVISION_SECRET, {
-            tenantId: tenant,
-            tenantName: input.name,
-            gatewayUrl: config.GATEWAY_URL,
-            apiKey: gatewayKey ?? "",
-            budgetCents: 0,
-            adminUser: { id: ctx.user.id, email: userEmail, name: userName },
-            agents: [{ name: "CEO", role: "ceo", title: "Chief Executive Officer" }],
-          });
-          logger.info(`Provisioned instance ${input.name}: tenantEntityId=${provisionResult.tenantEntityId}`);
-
-          // Persist Paperclip company ID in profile so member provisioning can resolve it
-          if (provisionResult.tenantEntityId) {
-            const currentProfile = await store.get(profile.id);
-            if (currentProfile) {
-              currentProfile.env = { ...currentProfile.env, PAPERCLIP_COMPANY_ID: provisionResult.tenantEntityId };
-              await store.save(currentProfile);
-            }
-          }
+          await doProvision();
         } catch (err) {
           logger.warn(`Provision call failed for ${input.name} (container is running but unconfigured)`, { err });
         }
       } else {
-        logger.warn(`Container ${input.name} failed health check — skipping provision`);
+        logger.warn(`Container ${input.name} not healthy after 90s — retrying provision in background`);
+        // Fire-and-forget background retry: keep checking for up to 3 more minutes
+        (async () => {
+          for (let i = 0; i < 36; i++) {
+            await new Promise((r) => setTimeout(r, 5000));
+            if (await checkHealth(containerUrl)) {
+              try {
+                await doProvision();
+              } catch (err) {
+                logger.warn(`Background provision retry failed for ${input.name}`, { err });
+              }
+              return;
+            }
+          }
+          logger.error(`Container ${input.name} never became healthy — provision abandoned`);
+        })();
       }
 
       logger.info(`Created instance: ${input.name} (${profile.id})`);
