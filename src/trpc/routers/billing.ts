@@ -330,7 +330,11 @@ export const billingRouter = router({
       if (!method || !method.enabled) {
         throw new TRPCError({ code: "BAD_REQUEST", message: `Payment method ${input.methodId} not available` });
       }
-      return createUnifiedCheckout({ chargeStore: cryptoChargeRepo, oracle: priceOracle, evmXpub }, method, {
+      const { cryptoClient } = deps();
+      if (!cryptoClient) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto service not configured" });
+      }
+      return createUnifiedCheckout({ cryptoService: cryptoClient }, input.methodId, {
         tenant,
         amountUsd: input.amountUsd,
       });
@@ -379,6 +383,7 @@ export const billingRouter = router({
         oracleAddress: z.string().min(1).nullable().optional(),
         xpub: z.string().min(1).nullable().optional(),
         confirmations: z.number().int().min(1),
+        addressType: z.string().min(1).optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -390,6 +395,7 @@ export const billingRouter = router({
         ...input,
         oracleAddress: input.oracleAddress ?? null,
         xpub: input.xpub ?? null,
+        addressType: input.addressType ?? "evm",
       });
       await auditLogger?.log({
         userId: ctx.user.id,
