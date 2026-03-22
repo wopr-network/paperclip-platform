@@ -41,3 +41,43 @@ jobs:
           node-version: "24"
       - run: npm install
       - run: npm test
+
+  publish:
+    name: Publish Docker image
+    runs-on: self-hosted
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/wopr-network/paperclip-platform:latest,ghcr.io/wopr-network/paperclip-platform:${{ github.sha }}
+
+  deploy:
+    name: Deploy to production
+    runs-on: self-hosted
+    needs: publish
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: deploy
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            cd /opt/paperclip-platform
+            docker compose pull platform-api
+            docker compose up -d platform-api
+            docker image prune -f
