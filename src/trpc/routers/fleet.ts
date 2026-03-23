@@ -207,6 +207,7 @@ export const fleetRouter = router({
         PORT: String(config.PAPERCLIP_CONTAINER_PORT),
         HOST: "0.0.0.0",
         NODE_ENV: "production",
+        HOME: "/data",
         WOPR_PROVISION_SECRET: config.PROVISION_SECRET,
         BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
         PAPERCLIP_HOME: "/data",
