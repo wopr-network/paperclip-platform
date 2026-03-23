@@ -9,8 +9,14 @@ import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { eq } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { getConfig } from "../../config.js";
 import { getPool } from "../../db/index.js";
 import { getCreditLedger, getNodeRegistry, getProfileStore, getServiceKeyRepo } from "../../fleet/services.js";
+
+// OpenRouter model list cache
+type CachedModel = { id: string; name: string; contextLength: number; promptPrice: string; completionPrice: string };
+let modelListCache: CachedModel[] | null = null;
+let modelListCacheExpiry = 0;
 
 /** Inline table ref — matches platform-core schema/tenant-model-selection.ts */
 const tenantModelSelection = pgTable("tenant_model_selection", {
@@ -117,6 +123,47 @@ export const adminRouter = router({
     cachedModel = input.model;
     cacheExpiry = Date.now() + CACHE_TTL_MS;
     return { ok: true, model: input.model };
+  }),
+
+  /** List available OpenRouter models for the gateway model dropdown. */
+  listAvailableModels: adminProcedure.query(async () => {
+    const config = getConfig();
+    const apiKey = config.OPENROUTER_API_KEY;
+    if (!apiKey) return { models: [] };
+
+    // Cache for 60s to avoid hammering OpenRouter
+    const now = Date.now();
+    if (modelListCache && modelListCacheExpiry > now) return { models: modelListCache };
+
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/models", {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) return { models: modelListCache ?? [] };
+      const json = (await res.json()) as {
+        data: Array<{
+          id: string;
+          name: string;
+          context_length?: number;
+          pricing?: { prompt?: string; completion?: string };
+        }>;
+      };
+      const models = json.data
+        .map((m) => ({
+          id: m.id,
+          name: m.name,
+          contextLength: m.context_length ?? 0,
+          promptPrice: m.pricing?.prompt ?? "0",
+          completionPrice: m.pricing?.completion ?? "0",
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      modelListCache = models;
+      modelListCacheExpiry = now + 60_000;
+      return { models };
+    } catch {
+      return { models: modelListCache ?? [] };
+    }
   }),
 
   // -------------------------------------------------------------------------
