@@ -234,6 +234,36 @@ export const fleetRouter = router({
 
       logger.info(`Creating instance "${input.name}" for tenant ${tenant} on node ${targetNode.config.name}`);
 
+      // Remove any stale container with the same name (e.g. from a previous
+      // failed creation). Docker returns 409 Conflict if the name is taken.
+      try {
+        const docker = getDocker();
+        const stale = docker.getContainer(containerName);
+        const info = await stale.inspect();
+        logger.info(`Removing stale container ${containerName} (state: ${info.State?.Status})`);
+        try {
+          await stale.stop({ t: 5 });
+        } catch {
+          /* may already be stopped */
+        }
+        await stale.remove({ force: true });
+      } catch {
+        // Container doesn't exist — expected path
+      }
+
+      // Also clean up stale fleet profile YAML if one exists from a prior attempt
+      try {
+        const store = getProfileStore();
+        const profiles = await store.list();
+        const existing = profiles.find((p: { name: string }) => `wopr-${p.name.replace(/_/g, "-")}` === containerName);
+        if (existing) {
+          logger.info(`Removing stale fleet profile for ${existing.name}`);
+          await store.delete(existing.id);
+        }
+      } catch {
+        // Profile store may not have a stale entry
+      }
+
       // Create Docker container with a named volume for persistent data.
       // FleetManager mounts volumeName at /data; PAPERCLIP_HOME=/data above
       // tells the Paperclip app to use that path for embedded PG + instance state.

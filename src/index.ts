@@ -32,6 +32,9 @@ import { logger } from "./log.js";
 
 let fleetUpdaterHandle: FleetUpdaterHandle | null = null;
 let cryptoWatcherHandle: CryptoWatcherHandle | null = null;
+
+// Late-binding OrgService reference — set in wireTrpcDeps(), used by onUserCreated hook.
+let lateOrgService: { getOrCreatePersonalOrg(userId: string, name: string): Promise<unknown> } | null = null;
 let notificationWorkerTimer: ReturnType<typeof setInterval> | null = null;
 let fleetNotificationUnsubscribe: (() => void) | null = null;
 // Late-bound refs for notification service — set during notification pipeline init,
@@ -95,6 +98,20 @@ async function main() {
             if (granted) logger.info(`Granted $5 welcome credits to user ${userId}`);
           } catch (err) {
             logger.error("Failed to grant signup credits:", err);
+          }
+          // Create personal tenant eagerly so the tenants table is never empty
+          // for a signed-up user. lateOrgService is set after wireTrpcDeps().
+          try {
+            if (lateOrgService) {
+              await lateOrgService.getOrCreatePersonalOrg(userId, "Personal");
+              logger.info(`Created personal org for user ${userId}`);
+            } else {
+              logger.warn(
+                `OrgService not yet initialized — personal org for ${userId} deferred to first dashboard visit`,
+              );
+            }
+          } catch (err) {
+            logger.error("Failed to create personal org:", err);
           }
         },
       });
@@ -368,6 +385,7 @@ async function wireTrpcDeps(
   const authUserRepo = new BetterAuthUserRepository(pool);
   const orgRepo = new DrizzleOrgRepository(db);
   const orgService = new OrgService(orgRepo, orgMemberRepo, db, { userRepo: authUserRepo });
+  lateOrgService = orgService;
   setOrgRouterDeps({ orgService, authUserRepo, creditLedger, provisionSecret: getConfig().PROVISION_SECRET });
 
   // --- Billing deps ---
