@@ -7,6 +7,7 @@
 
 import { getRolloutOrchestrator, getTenantUpdateConfigRepo } from "@wopr-network/platform-core/fleet";
 import {
+  authSocialRouter,
   createAdminFleetUpdateRouter,
   createFleetUpdateConfigRouter,
   createNotificationTemplateRouter,
@@ -23,6 +24,7 @@ import { settingsRouter } from "./routers/settings.js";
 
 export const appRouter = router({
   admin: adminRouter,
+  authSocial: authSocialRouter,
   adminFleetUpdate: createAdminFleetUpdateRouter(
     () => getRolloutOrchestrator(),
     () => getTenantUpdateConfigRepo(),
