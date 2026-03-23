@@ -70,15 +70,6 @@ jobs:
     runs-on: self-hosted
     needs: publish
     steps:
-      - uses: actions/checkout@v4
-      - name: Sync config files
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: deploy
-          key: ${{ secrets.PROD_SSH_KEY }}
-          source: "caddy/Caddyfile,docker-compose.yml"
-          target: "/opt/paperclip-platform"
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -87,6 +78,7 @@ jobs:
           key: ${{ secrets.PROD_SSH_KEY }}
           script: |
             cd /opt/paperclip-platform
+            git pull origin main
             docker compose pull platform-api
             docker compose up -d platform-api caddy
             docker image prune -f
