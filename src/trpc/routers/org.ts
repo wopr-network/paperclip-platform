@@ -31,6 +31,8 @@ export type OrgRouterDeps = {
   processor?: IPaymentProcessor;
   priceMap?: CreditPriceMap;
   provisionSecret?: string;
+  /** Called after an invite is created — sends the invite email (best-effort). */
+  onInviteCreated?: (orgId: string, inviteId: string, email: string) => void;
 };
 
 let _deps: OrgRouterDeps | null = null;
@@ -149,6 +151,17 @@ export const orgRouter = router({
     .mutation(async ({ input, ctx }) => {
       const { orgService } = deps();
       const invite = await orgService.inviteMember(input.orgId, ctx.user.id, input.email, input.role);
+
+      // Send invite email (best-effort, fire-and-forget)
+      const { onInviteCreated } = deps();
+      if (onInviteCreated) {
+        try {
+          onInviteCreated(input.orgId, invite.id, invite.email);
+        } catch (err) {
+          logger.error("Failed to send invite email", { err });
+        }
+      }
+
       return {
         id: invite.id,
         email: invite.email,
