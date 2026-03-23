@@ -73,8 +73,8 @@ async function main() {
         const templateRepo = new DrizzleNotificationTemplateRepository(
           db as unknown as import("drizzle-orm/pg-core").PgDatabase<never>,
         );
-        const seeded = await templateRepo.seed(DEFAULT_TEMPLATES);
-        if (seeded > 0) logger.info(`Seeded ${seeded} notification templates`);
+        const reseeded = await templateRepo.reseedAll(DEFAULT_TEMPLATES);
+        logger.info(`Reseeded ${reseeded} notification templates`);
       } catch (seedErr) {
         logger.warn("Notification template seeding failed (non-fatal)", {
           error: (seedErr as Error).message,
@@ -92,6 +92,7 @@ async function main() {
       initBetterAuth({
         pool,
         db,
+        brandName: config.BRAND_NAME,
         onUserCreated: async (userId) => {
           try {
             const granted = await grantSignupCredits(creditLedger, userId);
@@ -272,7 +273,7 @@ async function main() {
           const templateRepo = new DrizzleNotificationTemplateRepository(pgDb);
           const renderer = new HandlebarsRenderer(templateRepo);
 
-          const notificationService = new NotificationService(queueStore, config.APP_BASE_URL);
+          const notificationService = new NotificationService(queueStore, config.APP_BASE_URL, config.BRAND_NAME);
           _notificationService = notificationService;
 
           const worker = new NotificationWorker({
