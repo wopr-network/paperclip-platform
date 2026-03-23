@@ -388,26 +388,28 @@ async function wireTrpcDeps(
   const orgRepo = new DrizzleOrgRepository(db);
   const orgService = new OrgService(orgRepo, orgMemberRepo, db, { userRepo: authUserRepo });
   lateOrgService = orgService;
+  const onInviteCreated = (orgId: string, inviteId: string, email: string) => {
+    // Late-bound: notification service initializes after serve()
+    if (!_notificationService) return;
+    const appBaseUrl = getConfig().APP_BASE_URL;
+    const inviteUrl = `${appBaseUrl}/invite/${inviteId}`;
+    // Look up org name (best-effort async)
+    pool
+      .query("SELECT name FROM tenants WHERE id = $1 LIMIT 1", [orgId])
+      .then((res) => {
+        const orgName = res.rows[0]?.name ?? "your team";
+        _notificationService?.notifyTeamInvite(orgId, email, orgName, inviteUrl);
+        logger.info(`Sent invite email to ${email} for ${orgName}`);
+      })
+      .catch((err) => logger.error("Failed to send invite email", { err }));
+  };
+
   setOrgRouterDeps({
     orgService,
     authUserRepo,
     creditLedger,
     provisionSecret: getConfig().PROVISION_SECRET,
-    onInviteCreated: (orgId, inviteId, email) => {
-      // Late-bound: notification service initializes after serve()
-      if (!_notificationService) return;
-      const appBaseUrl = getConfig().APP_BASE_URL;
-      const inviteUrl = `${appBaseUrl}/invite/${inviteId}`;
-      // Look up org name (best-effort async)
-      pool
-        .query("SELECT name FROM tenants WHERE id = $1 LIMIT 1", [orgId])
-        .then((res) => {
-          const orgName = res.rows[0]?.name ?? "your team";
-          _notificationService?.notifyTeamInvite(orgId, email, orgName, inviteUrl);
-          logger.info(`Sent invite email to ${email} for ${orgName}`);
-        })
-        .catch((err) => logger.error("Failed to send invite email", { err }));
-    },
+    onInviteCreated,
   });
 
   // --- Billing deps ---
@@ -473,6 +475,7 @@ async function wireTrpcDeps(
       processor,
       priceMap,
       provisionSecret: getConfig().PROVISION_SECRET,
+      onInviteCreated,
     });
     logger.info("Billing tRPC router wired (Stripe + all repositories)");
   } else {
