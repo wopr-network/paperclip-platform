@@ -12,6 +12,12 @@ const envSchema = z.object({
    */
   PLATFORM_DOMAIN: z.string().default("runpaperclip.com"),
 
+  /** Brand name used in email templates and notifications. */
+  BRAND_NAME: z.string().default("Paperclip"),
+
+  /** Support email shown in email footers. */
+  SUPPORT_EMAIL: z.string().default("support@runpaperclip.com"),
+
   /**
    * Comma-separated list of allowed origins for CORS.
    * In production this is the dashboard origin (e.g. https://runpaperclip.com).
