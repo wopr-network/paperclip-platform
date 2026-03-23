@@ -47,6 +47,7 @@ let _notificationService: {
     changelogDate: string,
     changelogSummary: string,
   ) => void;
+  notifyTeamInvite: (tenantId: string, email: string, tenantName: string, inviteUrl: string) => void;
 } | null = null;
 let _emailResolver: { resolveEmail: (tenantId: string) => Promise<string | null> } | null = null;
 
@@ -387,7 +388,27 @@ async function wireTrpcDeps(
   const orgRepo = new DrizzleOrgRepository(db);
   const orgService = new OrgService(orgRepo, orgMemberRepo, db, { userRepo: authUserRepo });
   lateOrgService = orgService;
-  setOrgRouterDeps({ orgService, authUserRepo, creditLedger, provisionSecret: getConfig().PROVISION_SECRET });
+  setOrgRouterDeps({
+    orgService,
+    authUserRepo,
+    creditLedger,
+    provisionSecret: getConfig().PROVISION_SECRET,
+    onInviteCreated: (orgId, inviteId, email) => {
+      // Late-bound: notification service initializes after serve()
+      if (!_notificationService) return;
+      const appBaseUrl = getConfig().APP_BASE_URL;
+      const inviteUrl = `${appBaseUrl}/invite/${inviteId}`;
+      // Look up org name (best-effort async)
+      pool
+        .query("SELECT name FROM tenants WHERE id = $1 LIMIT 1", [orgId])
+        .then((res) => {
+          const orgName = res.rows[0]?.name ?? "your team";
+          _notificationService?.notifyTeamInvite(orgId, email, orgName, inviteUrl);
+          logger.info(`Sent invite email to ${email} for ${orgName}`);
+        })
+        .catch((err) => logger.error("Failed to send invite email", { err }));
+    },
+  });
 
   // --- Billing deps ---
   const stripeKey = process.env.STRIPE_SECRET_KEY;
