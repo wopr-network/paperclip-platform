@@ -250,10 +250,10 @@ async function main() {
 
       // --- Notification email pipeline (best-effort) ---
       try {
-        const resendKey = config.RESEND_API_KEY;
-        if (resendKey && dbModule.hasDatabase()) {
+        const hasEmailBackend = config.RESEND_API_KEY || process.env.AWS_SES_REGION;
+        if (hasEmailBackend && dbModule.hasDatabase()) {
           const {
-            EmailClient,
+            getEmailClient,
             NotificationService,
             NotificationWorker,
             DrizzleNotificationQueueStore,
@@ -265,10 +265,7 @@ async function main() {
           const db = dbModule.getDb();
           const pgDb = db as unknown as import("drizzle-orm/pg-core").PgDatabase<never>;
 
-          const emailClient = new EmailClient({
-            apiKey: resendKey,
-            from: config.FROM_EMAIL,
-          });
+          const emailClient = getEmailClient();
           const queueStore = new DrizzleNotificationQueueStore(db);
           const prefsStore = new DrizzleNotificationPreferencesStore(db);
           const templateRepo = new DrizzleNotificationTemplateRepository(pgDb);
@@ -315,8 +312,8 @@ async function main() {
           }
 
           logger.info("Notification email pipeline started");
-        } else if (!resendKey) {
-          logger.info("Notification pipeline skipped: RESEND_API_KEY not configured");
+        } else if (!hasEmailBackend) {
+          logger.info("Notification pipeline skipped: neither AWS_SES_REGION nor RESEND_API_KEY configured");
         }
       } catch (err) {
         logger.warn("Notification pipeline failed to start (non-fatal)", {
