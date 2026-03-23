@@ -9,6 +9,8 @@ import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { eq } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { z } from "zod";
+import { getPool } from "../../db/index.js";
+import { getCreditLedger, getNodeRegistry, getProfileStore, getServiceKeyRepo } from "../../fleet/services.js";
 
 /** Inline table ref — matches platform-core schema/tenant-model-selection.ts */
 const tenantModelSelection = pgTable("tenant_model_selection", {
@@ -115,5 +117,180 @@ export const adminRouter = router({
     cachedModel = input.model;
     cacheExpiry = Date.now() + CACHE_TTL_MS;
     return { ok: true, model: input.model };
+  }),
+
+  // -------------------------------------------------------------------------
+  // Platform-wide instance overview (all tenants)
+  // -------------------------------------------------------------------------
+
+  /** List ALL instances across all tenants with health status. */
+  listAllInstances: adminProcedure.query(async () => {
+    const store = getProfileStore();
+    const profiles = await store.list();
+    const registry = getNodeRegistry();
+
+    const instances = await Promise.all(
+      profiles.map(async (profile) => {
+        try {
+          const nodeId = registry.getContainerNode(profile.id);
+          const fleet = nodeId ? registry.getFleetManager(nodeId) : registry.list()[0].fleet;
+          const status = await fleet.status(profile.id);
+          return {
+            id: profile.id,
+            name: profile.name,
+            tenantId: profile.tenantId,
+            image: profile.image,
+            state: status.state,
+            health: status.health,
+            uptime: status.uptime,
+            containerId: status.containerId ?? null,
+            startedAt: status.startedAt ?? null,
+          };
+        } catch {
+          return {
+            id: profile.id,
+            name: profile.name,
+            tenantId: profile.tenantId,
+            image: profile.image,
+            state: "error" as const,
+            health: null,
+            uptime: null,
+            containerId: null,
+            startedAt: null,
+          };
+        }
+      }),
+    );
+
+    return { instances };
+  }),
+
+  // -------------------------------------------------------------------------
+  // Platform-wide tenant/org overview
+  // -------------------------------------------------------------------------
+
+  /** List all organizations with member counts and instance counts. */
+  listAllOrgs: adminProcedure.query(async () => {
+    // Query orgs with member counts
+    const pool = getPool();
+    const orgs = await pool.query<{
+      id: string;
+      name: string;
+      slug: string | null;
+      createdAt: string;
+      memberCount: string;
+    }>(`
+      SELECT
+        o.id,
+        o.name,
+        o.slug,
+        o.created_at as "createdAt",
+        (SELECT COUNT(*) FROM org_member om WHERE om.org_id = o.id) as "memberCount"
+      FROM organization o
+      ORDER BY o.created_at DESC
+    `);
+
+    // Count instances per tenant from fleet profiles
+    const store = getProfileStore();
+    const profiles = await store.list();
+    const instanceCountByTenant = new Map<string, number>();
+    for (const p of profiles) {
+      instanceCountByTenant.set(p.tenantId, (instanceCountByTenant.get(p.tenantId) ?? 0) + 1);
+    }
+
+    // Get credit balances per org
+    const ledger = getCreditLedger();
+
+    const result = await Promise.all(
+      orgs.rows.map(async (org) => {
+        let balanceCents = 0;
+        if (ledger) {
+          try {
+            const balance = await ledger.balance(org.id);
+            balanceCents = balance.toCentsRounded();
+          } catch {
+            // Ledger may not have an entry for this org
+          }
+        }
+        return {
+          id: org.id,
+          name: org.name,
+          slug: org.slug,
+          createdAt: org.createdAt,
+          memberCount: Number(org.memberCount),
+          instanceCount: instanceCountByTenant.get(org.id) ?? 0,
+          balanceCents,
+        };
+      }),
+    );
+
+    return { orgs: result };
+  }),
+
+  // -------------------------------------------------------------------------
+  // Platform-wide billing summary
+  // -------------------------------------------------------------------------
+
+  /** Get platform billing summary: total credits, active service keys, payment method count. */
+  billingOverview: adminProcedure.query(async () => {
+    const pool = getPool();
+
+    // Total credit balance across all tenants
+    let totalBalanceCents = 0;
+    const ledger = getCreditLedger();
+    if (ledger) {
+      try {
+        const balanceResult = await pool.query<{ totalRaw: string }>(`
+          SELECT COALESCE(SUM(amount), 0) as "totalRaw"
+          FROM credit_entry
+        `);
+        const rawTotal = Number(balanceResult.rows[0]?.totalRaw ?? 0);
+        // credit_entry.amount is in microdollars (10^-6), convert to cents
+        totalBalanceCents = Math.round(rawTotal / 10_000);
+      } catch {
+        // Table may not exist yet
+      }
+    }
+
+    // Count active service keys (proxy for active subscriptions)
+    let activeKeyCount = 0;
+    const keyRepo = getServiceKeyRepo();
+    if (keyRepo) {
+      try {
+        const keyResult = await pool.query<{ count: string }>(
+          `SELECT COUNT(*) as "count" FROM service_keys WHERE revoked_at IS NULL`,
+        );
+        activeKeyCount = Number(keyResult.rows[0]?.count ?? 0);
+      } catch {
+        // Service key repo may not support listAll
+      }
+    }
+
+    // Count payment methods across all tenants
+    let paymentMethodCount = 0;
+    try {
+      const pmResult = await pool.query<{ count: string }>(`
+        SELECT COUNT(*) as "count" FROM payment_methods WHERE enabled = true
+      `);
+      paymentMethodCount = Number(pmResult.rows[0]?.count ?? 0);
+    } catch {
+      // Table may not exist
+    }
+
+    // Count total orgs
+    let orgCount = 0;
+    try {
+      const orgCountResult = await pool.query<{ count: string }>(`SELECT COUNT(*) as "count" FROM organization`);
+      orgCount = Number(orgCountResult.rows[0]?.count ?? 0);
+    } catch {
+      // Table may not exist
+    }
+
+    return {
+      totalBalanceCents,
+      activeKeyCount,
+      paymentMethodCount,
+      orgCount,
+    };
   }),
 });
