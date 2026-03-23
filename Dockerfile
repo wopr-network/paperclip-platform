@@ -1,4 +1,5 @@
 FROM node:lts-trixie-slim AS base
+LABEL org.opencontainers.image.source=https://github.com/wopr-network/paperclip-platform
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl \
   && rm -rf /var/lib/apt/lists/*
