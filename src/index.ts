@@ -76,22 +76,27 @@ async function main() {
       // Bootstrap product config from DB (BRAND_NAME, PLATFORM_DOMAIN, CORS, etc.)
       // Dynamic import via dist path — @wopr-network/platform-core/product-config has no
       // package.json exports entry so we import at runtime and cast.
-      const productConfigMod = (await import("@wopr-network/platform-core/product-config" as string)) as {
+      const productConfigMod = (await import("@wopr-network/platform-core/product-config/index.js" as string)) as {
         platformBoot: (opts: { slug: string; db: unknown; devOrigins?: string[] }) => Promise<{
           service: unknown;
           config: { product: { brandName: string; domain: string } };
           corsOrigins: string[];
+          seeded: boolean;
         }>;
       };
       const {
         service: productConfigService,
         config: productConfig,
         corsOrigins,
+        seeded,
       } = await productConfigMod.platformBoot({
         slug: config.PRODUCT_SLUG,
         db,
         devOrigins: process.env.DEV_ORIGINS?.split(",").filter(Boolean),
       });
+      if (seeded) {
+        logger.info(`Auto-seeded product config for "${config.PRODUCT_SLUG}" from built-in preset`);
+      }
       logger.info(`Product config loaded: ${productConfig.product.brandName} (${productConfig.product.domain})`);
 
       // Make corsOrigins available for CORS middleware (late-binds into app.ts getter)
