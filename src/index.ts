@@ -17,6 +17,8 @@ import {
   setUserRoleRepo,
 } from "./fleet/services.js";
 import { logger } from "./log.js";
+import { setProductCorsOrigins } from "./product-cors.js";
+import { setProductConfigRouterDeps } from "./trpc/index.js";
 
 // ---------------------------------------------------------------------------
 // Boot sequence: init everything (including route mounting) BEFORE serve().
@@ -35,6 +37,11 @@ let cryptoWatcherHandle: CryptoWatcherHandle | null = null;
 
 // Late-binding OrgService reference — set in wireTrpcDeps(), used by onUserCreated hook.
 let lateOrgService: { getOrCreatePersonalOrg(userId: string, name: string): Promise<unknown> } | null = null;
+
+// Late-binding product config service — set after platformBoot(), used by tRPC product router.
+// Typed as unknown because @wopr-network/platform-core/product-config has no package exports entry;
+// cast to the correct type at the call site via setProductConfigRouterDeps.
+let _productConfigService: unknown = null;
 let notificationWorkerTimer: ReturnType<typeof setInterval> | null = null;
 let fleetNotificationUnsubscribe: (() => void) | null = null;
 // Late-bound refs for notification service — set during notification pipeline init,
@@ -66,6 +73,31 @@ async function main() {
       await runMigrations(pool);
       logger.info("Database migrations complete");
 
+      // Bootstrap product config from DB (BRAND_NAME, PLATFORM_DOMAIN, CORS, etc.)
+      // Dynamic import via dist path — @wopr-network/platform-core/product-config has no
+      // package.json exports entry so we import at runtime and cast.
+      const productConfigMod = (await import("@wopr-network/platform-core/dist/product-config/index.js" as string)) as {
+        platformBoot: (opts: { slug: string; db: unknown; devOrigins?: string[] }) => Promise<{
+          service: unknown;
+          config: { product: { brandName: string; domain: string } };
+          corsOrigins: string[];
+        }>;
+      };
+      const {
+        service: productConfigService,
+        config: productConfig,
+        corsOrigins,
+      } = await productConfigMod.platformBoot({
+        slug: config.PRODUCT_SLUG,
+        db,
+        devOrigins: process.env.DEV_ORIGINS?.split(",").filter(Boolean),
+      });
+      logger.info(`Product config loaded: ${productConfig.product.brandName} (${productConfig.product.domain})`);
+
+      // Make corsOrigins available for CORS middleware (late-binds into app.ts getter)
+      setProductCorsOrigins(corsOrigins);
+      _productConfigService = productConfigService;
+
       // Seed notification templates (idempotent — skips existing)
       try {
         const { DEFAULT_TEMPLATES, DrizzleNotificationTemplateRepository } = await import(
@@ -93,7 +125,7 @@ async function main() {
       initBetterAuth({
         pool,
         db,
-        brandName: config.BRAND_NAME,
+        brandName: productConfig.product.brandName || config.BRAND_NAME,
         onUserCreated: async (userId) => {
           try {
             const granted = await grantSignupCredits(creditLedger, userId);
@@ -497,6 +529,21 @@ async function wireTrpcDeps(
   // --- Page context deps ---
   const { DrizzlePageContextRepository } = await import("@wopr-network/platform-core/fleet/page-context-repository");
   setPageContextRouterDeps({ repo: new DrizzlePageContextRepository(db) });
+
+  // --- Page context deps already set above ---
+
+  // --- Product config tRPC router deps ---
+  if (_productConfigService) {
+    // Cast: service typed as unknown since the module has no package exports entry.
+    // setProductConfigRouterDeps accepts the service as ProductConfigService internally.
+    setProductConfigRouterDeps(
+      _productConfigService as Parameters<typeof setProductConfigRouterDeps>[0],
+      getConfig().PRODUCT_SLUG,
+    );
+    logger.info("Product config tRPC router wired");
+  } else {
+    logger.warn("Product config service not initialized — product tRPC router unavailable");
+  }
 }
 
 // ---------------------------------------------------------------------------
