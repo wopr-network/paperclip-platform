@@ -15,13 +15,19 @@ export function setCryptoWebhookDeps(deps: Parameters<typeof handleCryptoWebhook
   _deps = deps;
 }
 
-/** Validate the Bearer token against the provision secret (timing-safe). */
+/** Validate the Bearer token against known secrets (timing-safe). */
 function assertSecret(authHeader: string | undefined): boolean {
-  const secret = getConfig().PROVISION_SECRET;
   if (!authHeader?.startsWith("Bearer ")) return false;
   const token = authHeader.slice("Bearer ".length).trim();
-  if (token.length !== secret.length) return false;
-  return timingSafeEqual(Buffer.from(token), Buffer.from(secret));
+  const config = getConfig();
+  // Accept provision secret OR crypto service key (chain server uses the latter)
+  const secrets = [config.PROVISION_SECRET, config.CRYPTO_SERVICE_KEY].filter((s): s is string => !!s);
+  for (const secret of secrets) {
+    if (token.length === secret.length && timingSafeEqual(Buffer.from(token), Buffer.from(secret))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
