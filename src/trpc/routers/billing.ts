@@ -334,11 +334,19 @@ export const billingRouter = router({
       const { getConfig } = await import("../../config.js");
       const config = getConfig();
       const callbackUrl = `https://api.${config.PLATFORM_DOMAIN}/api/webhooks/crypto`;
-      return createUnifiedCheckout({ cryptoService: cryptoClient }, input.methodId, {
+      const result = await createUnifiedCheckout({ cryptoService: cryptoClient }, input.methodId, {
         tenant,
         amountUsd: input.amountUsd,
         callbackUrl,
       });
+
+      // Store charge locally so the webhook handler can find it and credit the tenant.
+      const { cryptoChargeRepo } = deps();
+      if (cryptoChargeRepo) {
+        await cryptoChargeRepo.create(result.referenceId, tenant, Math.round(input.amountUsd * 100));
+      }
+
+      return result;
     }),
 
   /** Check the status of a crypto charge (for payment status polling). */
