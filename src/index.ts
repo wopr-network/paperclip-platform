@@ -42,6 +42,9 @@ let lateOrgService: { getOrCreatePersonalOrg(userId: string, name: string): Prom
 // Typed as unknown because @wopr-network/platform-core/product-config has no package exports entry;
 // cast to the correct type at the call site via setProductConfigRouterDeps.
 let _productConfigService: unknown = null;
+let _productConfig: {
+  product: { brandName: string; domain: string; appDomain: string; fromEmail: string; emailSupport: string };
+} | null = null;
 let notificationWorkerTimer: ReturnType<typeof setInterval> | null = null;
 let fleetNotificationUnsubscribe: (() => void) | null = null;
 // Late-bound refs for notification service — set during notification pipeline init,
@@ -79,7 +82,9 @@ async function main() {
       const productConfigMod = (await import("@wopr-network/platform-core/product-config/index" as string)) as {
         platformBoot: (opts: { slug: string; db: unknown; devOrigins?: string[] }) => Promise<{
           service: unknown;
-          config: { product: { brandName: string; domain: string } };
+          config: {
+            product: { brandName: string; domain: string; appDomain: string; fromEmail: string; emailSupport: string };
+          };
           corsOrigins: string[];
           seeded: boolean;
         }>;
@@ -102,6 +107,7 @@ async function main() {
       // Make corsOrigins available for CORS middleware (late-binds into app.ts getter)
       setProductCorsOrigins(corsOrigins);
       _productConfigService = productConfigService;
+      _productConfig = productConfig;
 
       // Seed notification templates (idempotent — skips existing)
       try {
@@ -308,8 +314,9 @@ async function main() {
           const templateRepo = new DrizzleNotificationTemplateRepository(pgDb);
           const renderer = new HandlebarsRenderer(templateRepo);
 
-          const appBaseUrl = config.APP_BASE_URL;
-          const notificationService = new NotificationService(queueStore, appBaseUrl, config.BRAND_NAME);
+          const appBaseUrl = _productConfig ? `https://${_productConfig.product.appDomain}` : config.APP_BASE_URL;
+          const brandName = _productConfig?.product.brandName || config.BRAND_NAME;
+          const notificationService = new NotificationService(queueStore, appBaseUrl, brandName);
           _notificationService = notificationService;
 
           const worker = new NotificationWorker({
