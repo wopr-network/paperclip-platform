@@ -308,7 +308,10 @@ async function main() {
           const db = dbModule.getDb();
           const pgDb = db as unknown as import("drizzle-orm/pg-core").PgDatabase<never>;
 
-          const emailClient = getEmailClient();
+          const emailClient = getEmailClient({
+            from: _productConfig?.product.fromEmail || undefined,
+            replyTo: _productConfig?.product.emailSupport || undefined,
+          });
           const queueStore = new DrizzleNotificationQueueStore(db);
           const prefsStore = new DrizzleNotificationPreferencesStore(db);
           const templateRepo = new DrizzleNotificationTemplateRepository(pgDb);
