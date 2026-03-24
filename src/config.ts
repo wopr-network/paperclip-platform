@@ -29,6 +29,7 @@ const envSchema = z.object({
    * Used to authenticate /internal/provision calls.
    */
   PROVISION_SECRET: z.string().min(1),
+  CRYPTO_SERVICE_KEY: z.string().optional(),
 
   /**
    * URL for the platform-core inference gateway.
