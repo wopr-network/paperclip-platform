@@ -22,7 +22,7 @@
     "@hono/node-server": "^1.19.10",
     "@sentry/node": "^10.43.0",
     "@trpc/server": "^11.12.0",
-    "@wopr-network/platform-core": "^1.59.0",
+    "@wopr-network/platform-core": "^1.62.0",
     "@wopr-network/provision-client": "^1.0.0",
     "better-auth": "^1.5.4",
     "dockerode": "^4.0.6",
@@ -43,5 +43,13 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "cpu-features",
+      "protobufjs",
+      "ssh2"
+    ]
   }
 }

@@ -287,7 +287,7 @@ async function main() {
 
       // --- Notification email pipeline (best-effort) ---
       try {
-        const hasEmailBackend = config.RESEND_API_KEY || process.env.AWS_SES_REGION;
+        const hasEmailBackend = config.RESEND_API_KEY || process.env.AWS_SES_REGION || process.env.POSTMARK_API_KEY;
         if (hasEmailBackend && dbModule.hasDatabase()) {
           const {
             getEmailClient,
@@ -308,7 +308,8 @@ async function main() {
           const templateRepo = new DrizzleNotificationTemplateRepository(pgDb);
           const renderer = new HandlebarsRenderer(templateRepo);
 
-          const notificationService = new NotificationService(queueStore, config.APP_BASE_URL, config.BRAND_NAME);
+          const appBaseUrl = config.APP_BASE_URL;
+          const notificationService = new NotificationService(queueStore, appBaseUrl, config.BRAND_NAME);
           _notificationService = notificationService;
 
           const worker = new NotificationWorker({
