@@ -304,11 +304,16 @@ export const billingRouter = router({
       return { url: session.url, sessionId: session.id };
     }),
 
-  /** Public: list enabled payment methods for checkout UI. */
+  /** Public: list enabled payment methods for checkout UI.
+   *  Sources directly from the chain server — if it's there, it's available. */
   supportedPaymentMethods: publicProcedure.query(async () => {
-    const { paymentMethodStore } = deps();
-    if (!paymentMethodStore) return [];
-    return paymentMethodStore.listEnabled();
+    const { cryptoClient } = deps();
+    if (!cryptoClient) return [];
+    try {
+      return await cryptoClient.listChains();
+    } catch {
+      return [];
+    }
   }),
 
   /** Unified crypto checkout — works with any enabled payment method. */
