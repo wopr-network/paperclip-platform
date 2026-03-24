@@ -387,28 +387,8 @@ export const billingRouter = router({
         addressType: z.string().min(1).optional(),
       }),
     )
-    .mutation(async ({ input, ctx }) => {
-      const { paymentMethodStore, auditLogger } = deps();
-      if (!paymentMethodStore) {
-        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment method store not configured" });
-      }
-      await paymentMethodStore.upsert({
-        ...input,
-        oracleAddress: input.oracleAddress ?? null,
-        xpub: input.xpub ?? null,
-        addressType: input.addressType ?? "evm",
-        iconUrl: "",
-        encodingParams: "",
-      });
-      await auditLogger?.log({
-        userId: ctx.user.id,
-        authMethod: "session",
-        action: "config.update",
-        resourceType: "billing",
-        resourceId: input.id,
-        details: input,
-      });
-      return { ok: true };
+    .mutation(async () => {
+      throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment methods are managed by the chain server" });
     }),
 
   /** Admin: toggle a payment method on/off. */
