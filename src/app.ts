@@ -7,6 +7,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { getConfig } from "./config.js";
 import { logger } from "./log.js";
 import { adminAuth } from "./middleware/admin-auth.js";
+import { getProductCorsOrigins } from "./product-cors.js";
 import { tenantProxyMiddleware } from "./proxy/tenant-proxy.js";
 import { adminRoutes } from "./routes/admin.js";
 import { cryptoWebhookRoutes } from "./routes/crypto-webhook.js";
@@ -25,9 +26,13 @@ app.use(
   cors({
     origin: (origin) => {
       try {
-        const allowed = getConfig()
-          .UI_ORIGIN.split(",")
-          .map((s) => s.trim());
+        // DB-derived origins (from platformBoot) take precedence; fall back to UI_ORIGIN env var.
+        const dbOrigins = getProductCorsOrigins();
+        const allowed = dbOrigins
+          ? dbOrigins
+          : getConfig()
+              .UI_ORIGIN.split(",")
+              .map((s) => s.trim());
         return allowed.includes(origin) ? origin : null;
       } catch {
         return origin === "http://localhost:3200" ? origin : null;

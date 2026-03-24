@@ -398,6 +398,7 @@ export const billingRouter = router({
         xpub: input.xpub ?? null,
         addressType: input.addressType ?? "evm",
         iconUrl: "",
+        encodingParams: "",
       });
       await auditLogger?.log({
         userId: ctx.user.id,

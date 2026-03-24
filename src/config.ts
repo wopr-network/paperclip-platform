@@ -116,6 +116,12 @@ const envSchema = z.object({
 
   /** Base URL for the web app (used in email links). */
   APP_BASE_URL: z.string().default("https://app.paperclip.bot"),
+
+  /**
+   * Product slug for DB-driven product config.
+   * Identifies which product record to load from the product_configs table.
+   */
+  PRODUCT_SLUG: z.string().default("paperclip"),
 });
 
 export type Config = z.infer<typeof envSchema>;
