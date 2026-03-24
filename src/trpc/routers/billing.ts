@@ -327,17 +327,9 @@ export const billingRouter = router({
     .mutation(async ({ input, ctx }) => {
       const tenant = ctx.tenantId;
       await assertOrgAdminOrOwner(tenant, ctx.user.id);
-      const { cryptoChargeRepo, evmXpub, priceOracle, paymentMethodStore } = deps();
-      if (!cryptoChargeRepo || !evmXpub || !priceOracle || !paymentMethodStore) {
-        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
-      }
-      const method = await paymentMethodStore.getById(input.methodId);
-      if (!method || !method.enabled) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: `Payment method ${input.methodId} not available` });
-      }
       const { cryptoClient } = deps();
       if (!cryptoClient) {
-        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto service not configured" });
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
       }
       return createUnifiedCheckout({ cryptoService: cryptoClient }, input.methodId, {
         tenant,
