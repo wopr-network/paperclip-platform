@@ -76,7 +76,7 @@ async function main() {
       // Bootstrap product config from DB (BRAND_NAME, PLATFORM_DOMAIN, CORS, etc.)
       // Dynamic import via dist path — @wopr-network/platform-core/product-config has no
       // package.json exports entry so we import at runtime and cast.
-      const productConfigMod = (await import("@wopr-network/platform-core/product-config/index.js" as string)) as {
+      const productConfigMod = (await import("@wopr-network/platform-core/product-config/index" as string)) as {
         platformBoot: (opts: { slug: string; db: unknown; devOrigins?: string[] }) => Promise<{
           service: unknown;
           config: { product: { brandName: string; domain: string } };
