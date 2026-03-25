@@ -9,16 +9,12 @@ import { TRPCError } from "@trpc/server";
 import type { AuditLogger } from "@wopr-network/platform-core/audit/logger";
 import type {
   ICryptoChargeRepository,
-  IPaymentMethodStore,
   IPaymentProcessor,
 } from "@wopr-network/platform-core/billing";
 import {
-  ChainlinkOracle,
   type CryptoServiceClient,
-  createRpcCaller,
   createUnifiedCheckout,
-  type IPriceOracle,
-  MIN_CHECKOUT_USD,
+  MIN_PAYMENT_USD,
 } from "@wopr-network/platform-core/billing";
 import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
@@ -156,9 +152,6 @@ export interface BillingRouterDeps {
   affiliateRepo: IAffiliateRepository;
   cryptoClient?: CryptoServiceClient;
   cryptoChargeRepo?: ICryptoChargeRepository;
-  evmXpub?: string;
-  priceOracle?: IPriceOracle;
-  paymentMethodStore?: IPaymentMethodStore;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
 }
@@ -173,26 +166,13 @@ export function setBillingRouterDeps(deps: BillingRouterDeps): void {
 export function setCryptoBillingDeps(
   cryptoClient: CryptoServiceClient,
   cryptoChargeRepo: ICryptoChargeRepository,
-  evmXpub?: string,
-  evmRpcUrl?: string,
-  paymentMethodStore?: IPaymentMethodStore,
 ): void {
-  // Create price oracle if we have an RPC URL (Chainlink on-chain feeds)
-  let priceOracle: IPriceOracle | undefined;
-  if (evmRpcUrl) {
-    const rpcCall = createRpcCaller(evmRpcUrl);
-    priceOracle = new ChainlinkOracle({ rpcCall });
-  }
-
   if (!_deps) {
-    _deps = { cryptoClient, cryptoChargeRepo, evmXpub, priceOracle, paymentMethodStore } as BillingRouterDeps;
+    _deps = { cryptoClient, cryptoChargeRepo } as BillingRouterDeps;
     return;
   }
   _deps.cryptoClient = cryptoClient;
   _deps.cryptoChargeRepo = cryptoChargeRepo;
-  if (evmXpub) _deps.evmXpub = evmXpub;
-  if (priceOracle) _deps.priceOracle = priceOracle;
-  if (paymentMethodStore) _deps.paymentMethodStore = paymentMethodStore;
 }
 
 function deps(): BillingRouterDeps {
@@ -321,7 +301,7 @@ export const billingRouter = router({
     .input(
       z.object({
         methodId: z.string().min(1).max(64),
-        amountUsd: z.number().min(MIN_CHECKOUT_USD).max(10000),
+        amountUsd: z.number().min(MIN_PAYMENT_USD).max(10000),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -368,11 +348,16 @@ export const billingRouter = router({
     };
   }),
 
-  /** Admin: list all payment methods (including disabled). */
+  /** Admin: list all payment methods (including disabled).
+   *  Now delegated to the chain server. */
   adminListPaymentMethods: adminProcedure.query(async () => {
-    const { paymentMethodStore } = deps();
-    if (!paymentMethodStore) return [];
-    return paymentMethodStore.listAll();
+    const { cryptoClient } = deps();
+    if (!cryptoClient) return [];
+    try {
+      return await cryptoClient.listChains();
+    } catch {
+      return [];
+    }
   }),
 
   /** Admin: upsert a payment method. */
@@ -402,21 +387,8 @@ export const billingRouter = router({
   /** Admin: toggle a payment method on/off. */
   adminTogglePaymentMethod: adminProcedure
     .input(z.object({ id: z.string().min(1), enabled: z.boolean() }))
-    .mutation(async ({ input, ctx }) => {
-      const { paymentMethodStore, auditLogger } = deps();
-      if (!paymentMethodStore) {
-        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment method store not configured" });
-      }
-      await paymentMethodStore.setEnabled(input.id, input.enabled);
-      await auditLogger?.log({
-        userId: ctx.user.id,
-        authMethod: "session",
-        action: "config.update",
-        resourceType: "billing",
-        resourceId: input.id,
-        details: { enabled: input.enabled },
-      });
-      return { ok: true };
+    .mutation(async () => {
+      throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Payment methods are managed by the chain server" });
     }),
 
   /** Create a Stripe Customer Portal session. */

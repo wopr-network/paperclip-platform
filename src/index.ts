@@ -607,7 +607,6 @@ async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").Dr
     CryptoServiceClient,
     loadCryptoConfig,
     DrizzleCryptoChargeRepository,
-    DrizzlePaymentMethodStore,
     DrizzleWebhookSeenRepository,
   } = await import("@wopr-network/platform-core/billing");
 
@@ -623,17 +622,12 @@ async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").Dr
   const cryptoClient = new CryptoServiceClient(cryptoConfig);
   const cryptoChargeRepo = new DrizzleCryptoChargeRepository(db);
   const replayGuard = new DrizzleWebhookSeenRepository(db);
-  const paymentMethodStore = new DrizzlePaymentMethodStore(db);
 
   // Wire webhook route deps (for POST /api/webhooks/crypto)
   setCryptoWebhookDeps({ chargeStore: cryptoChargeRepo, creditLedger, replayGuard });
 
-  // Wire unified checkout + payment method registry
-  const evmXpub = process.env.EVM_XPUB;
-  const evmRpcBase = process.env.EVM_RPC_BASE;
-  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo, evmXpub, evmRpcBase, paymentMethodStore);
+  // Wire unified checkout (payment methods now managed by chain server)
+  setCryptoBillingDeps(cryptoClient, cryptoChargeRepo);
 
   logger.info("Crypto payments configured (webhook + checkout)");
-  if (evmXpub) logger.info("Stablecoin + ETH payments configured (EVM_XPUB set)");
-  if (evmRpcBase) logger.info("Chainlink price oracle configured (EVM_RPC_BASE set)");
 }
