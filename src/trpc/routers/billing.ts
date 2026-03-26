@@ -147,6 +147,7 @@ export interface BillingRouterDeps {
   cryptoChargeRepo?: ICryptoChargeRepository;
   auditLogger?: AuditLogger;
   promotionEngine?: PromotionEngine;
+  productConfig?: { product: { domain?: string } };
 }
 
 let _deps: BillingRouterDeps | null = null;
@@ -304,9 +305,8 @@ export const billingRouter = router({
       if (!cryptoClient) {
         throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
       }
-      const { getProductConfig } = await import("../../container.js");
-      const pc = getProductConfig();
-      const callbackUrl = `https://api.${pc.product.domain}/api/webhooks/crypto`;
+      const domain = deps().productConfig?.product?.domain ?? "localhost";
+      const callbackUrl = `https://api.${domain}/api/webhooks/crypto`;
       const result = await createUnifiedCheckout({ cryptoService: cryptoClient }, input.methodId, {
         tenant,
         amountUsd: input.amountUsd,

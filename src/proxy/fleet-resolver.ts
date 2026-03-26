@@ -7,14 +7,24 @@
  */
 
 import { logger } from "@wopr-network/platform-core/config/logger";
-import type { ProxyRoute } from "@wopr-network/platform-core/proxy/types";
-import { getProxyManager } from "../container.js";
+import type { ProxyManagerInterface, ProxyRoute } from "@wopr-network/platform-core/proxy/types";
+
+let _proxy: ProxyManagerInterface | null = null;
+
+export function setFleetResolverProxy(proxy: ProxyManagerInterface): void {
+  _proxy = proxy;
+}
+
+function getProxy(): ProxyManagerInterface {
+  if (!_proxy) throw new Error("Fleet resolver not initialized — call setFleetResolverProxy first");
+  return _proxy;
+}
 
 /** Push route table to Caddy. Logs but does not throw on failure. */
 async function syncToCaddy(): Promise<void> {
   try {
-    const proxy = getProxyManager();
-    await proxy.reload();
+    const p = getProxy();
+    await p.reload();
   } catch (err) {
     logger.warn("Caddy sync failed", { error: (err as Error).message });
   }
@@ -30,7 +40,7 @@ export async function registerRoute(
   upstreamHost: string,
   upstreamPort: number,
 ): Promise<void> {
-  await getProxyManager().addRoute({
+  await getProxy().addRoute({
     instanceId,
     subdomain,
     upstreamHost,
@@ -42,13 +52,13 @@ export async function registerRoute(
 
 /** Remove a fleet container route. */
 export async function removeRoute(instanceId: string): Promise<void> {
-  getProxyManager().removeRoute(instanceId);
+  getProxy().removeRoute(instanceId);
   await syncToCaddy();
 }
 
 /** Mark a container as healthy or unhealthy. */
 export function setRouteHealth(instanceId: string, healthy: boolean): void {
-  getProxyManager().updateHealth(instanceId, healthy);
+  getProxy().updateHealth(instanceId, healthy);
 }
 
 /**
@@ -56,7 +66,7 @@ export function setRouteHealth(instanceId: string, healthy: boolean): void {
  * Returns null if no route exists or the container is unhealthy.
  */
 export function resolveContainerUrl(subdomain: string): string | null {
-  const routes = getProxyManager().getRoutes();
+  const routes = getProxy().getRoutes();
   const route = routes.find((r) => r.subdomain === subdomain);
   if (!route || !route.healthy) return null;
   return `http://${route.upstreamHost}:${route.upstreamPort}`;
@@ -64,5 +74,5 @@ export function resolveContainerUrl(subdomain: string): string | null {
 
 /** Get all registered routes. */
 export function getRoutes(): ProxyRoute[] {
-  return getProxyManager().getRoutes();
+  return getProxy().getRoutes();
 }

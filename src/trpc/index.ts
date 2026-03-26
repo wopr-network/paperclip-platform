@@ -20,9 +20,9 @@ import {
 // package.json exports entry.
 type ProductConfigService = Parameters<typeof createProductConfigRouter>[0] extends () => infer S ? S : never;
 
+import type { DrizzleDb } from "@wopr-network/platform-core/db";
 import { DrizzleNotificationTemplateRepository } from "@wopr-network/platform-core/email";
 import type { PgDatabase } from "drizzle-orm/pg-core";
-import { getDb } from "../container.js";
 import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
 import { fleetRouter } from "./routers/fleet.js";
@@ -31,12 +31,18 @@ import { pageContextRouter } from "./routers/page-context.js";
 import { profileRouter } from "./routers/profile.js";
 import { settingsRouter } from "./routers/settings.js";
 
-// Late-bound product config service — set by wireTrpcDeps() after platformBoot().
+// Late-bound deps — set after container construction.
 let _productConfigServiceRef: ProductConfigService | null = null;
 let _productSlug = "paperclip";
+let _db: DrizzleDb | null = null;
+
 export function setProductConfigRouterDeps(service: ProductConfigService, slug: string): void {
   _productConfigServiceRef = service;
   _productSlug = slug;
+}
+
+export function setTrpcDb(db: DrizzleDb): void {
+  _db = db;
 }
 
 export const appRouter = router({
@@ -50,7 +56,7 @@ export const appRouter = router({
   fleet: fleetRouter,
   fleetUpdateConfig: createFleetUpdateConfigRouter(() => getTenantUpdateConfigRepo()),
   notificationTemplates: createNotificationTemplateRouter(
-    () => new DrizzleNotificationTemplateRepository(getDb() as unknown as PgDatabase<never>),
+    () => new DrizzleNotificationTemplateRepository((_db ?? ({} as DrizzleDb)) as unknown as PgDatabase<never>),
   ),
   org: orgRouter,
   pageContext: pageContextRouter,
@@ -72,6 +78,7 @@ export { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 // Re-export dep setters for initialization
 export { setAdminRouterDeps } from "./routers/admin.js";
 export { setBillingRouterDeps } from "./routers/billing.js";
+export { setFleetRouterDeps } from "./routers/fleet.js";
 export { setOrgRouterDeps } from "./routers/org.js";
 export { setPageContextRouterDeps } from "./routers/page-context.js";
 export { setProfileRouterDeps } from "./routers/profile.js";
