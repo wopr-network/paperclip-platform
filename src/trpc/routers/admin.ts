@@ -9,9 +9,7 @@ import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { eq } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import { z } from "zod";
-import { getConfig } from "../../config.js";
-import { getPool } from "../../db/index.js";
-import { getCreditLedger, getNodeRegistry, getProfileStore, getServiceKeyRepo } from "../../fleet/services.js";
+import { getCreditLedger, getNodeRegistry, getPool, getProfileStore, getServiceKeyRepo } from "../../container.js";
 
 // OpenRouter model list cache
 type CachedModel = { id: string; name: string; contextLength: number; promptPrice: string; completionPrice: string };
@@ -127,8 +125,7 @@ export const adminRouter = router({
 
   /** List available OpenRouter models for the gateway model dropdown. */
   listAvailableModels: adminProcedure.query(async () => {
-    const config = getConfig();
-    const apiKey = config.OPENROUTER_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) return { models: [] };
 
     // Cache for 60s to avoid hammering OpenRouter

@@ -6,8 +6,8 @@
  * companyId from the profile's PAPERCLIP_COMPANY_ID env var.
  */
 
-import { logger } from "../log.js";
-import { getProfileStore, getProxyManager } from "./services.js";
+import { logger } from "@wopr-network/platform-core/config/logger";
+import { getProfileStore, getProxyManager } from "../container.js";
 
 export interface OrgInstance {
   instanceUrl: string;

@@ -8,21 +8,21 @@
 
 import { randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { getUserEmail } from "@wopr-network/platform-core/email";
 import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { checkHealth, provisionContainer } from "@wopr-network/provision-client";
 import { z } from "zod";
-import { getConfig } from "../../config.js";
-import { getPool } from "../../db/index.js";
 import {
   getCreditLedger,
   getDocker,
   getNodeRegistry,
   getPlacementStrategy,
+  getPool,
+  getProductConfig,
   getProfileStore,
   getServiceKeyRepo,
-} from "../../fleet/services.js";
-import { logger } from "../../log.js";
+} from "../../container.js";
 import { registerRoute, removeRoute } from "../../proxy/fleet-resolver.js";
 import { assertOrgAdminOrOwner } from "../auth-helpers.js";
 
@@ -125,7 +125,16 @@ export const fleetRouter = router({
     .mutation(async ({ input, ctx }) => {
       const tenant = input.orgId ?? tenantFromCtx(ctx);
       await assertOrgAdminOrOwner(tenant, ctx.user.id);
-      const config = getConfig();
+      const pc = getProductConfig();
+      const maxInstances = pc.fleet?.maxInstances ?? Number(process.env.MAX_INSTANCES_PER_TENANT ?? 5);
+      const containerPort = pc.fleet?.containerPort ?? Number(process.env.PAPERCLIP_CONTAINER_PORT ?? 3100);
+      const containerImage =
+        pc.fleet?.containerImage ?? process.env.PAPERCLIP_IMAGE ?? "ghcr.io/wopr-network/paperclip:managed";
+      const platformDomain = pc.product.domain ?? process.env.PLATFORM_DOMAIN ?? "runpaperclip.com";
+      const provisionSecret = process.env.PROVISION_SECRET ?? "";
+      const uiOrigin = process.env.UI_ORIGIN ?? "http://localhost:3200";
+      const gatewayUrl = process.env.GATEWAY_URL ?? "";
+      const fleetDockerNetwork = process.env.FLEET_DOCKER_NETWORK ?? "";
 
       // Billing gate
       const ledger = getCreditLedger();
@@ -143,10 +152,10 @@ export const fleetRouter = router({
       const store = getProfileStore();
       const profiles = await store.list();
       const tenantInstances = profiles.filter((p) => p.tenantId === tenant);
-      if (tenantInstances.length >= config.MAX_INSTANCES_PER_TENANT) {
+      if (tenantInstances.length >= maxInstances) {
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: `Instance limit reached: maximum ${config.MAX_INSTANCES_PER_TENANT} per tenant`,
+          message: `Instance limit reached: maximum ${maxInstances} per tenant`,
         });
       }
 
@@ -186,10 +195,10 @@ export const fleetRouter = router({
       // Paperclip's hostname allowlist must include it, plus the tenant subdomain.
       // In dev, Caddy serves on :8080, so include the port-qualified hostname too.
       const containerName = `wopr-${input.name}`;
-      const tenantFqdn = `${input.name}.${config.PLATFORM_DOMAIN}`;
+      const tenantFqdn = `${input.name}.${platformDomain}`;
       const allowedHostnames = [containerName, tenantFqdn];
       // Parse UI_ORIGIN to discover non-standard ports (e.g. http://app.localhost:8080)
-      for (const origin of config.UI_ORIGIN.split(",")) {
+      for (const origin of uiOrigin.split(",")) {
         try {
           const u = new URL(origin.trim());
           if (u.port) allowedHostnames.push(`${tenantFqdn}:${u.port}`);
@@ -204,11 +213,11 @@ export const fleetRouter = router({
       const gatewayKey = serviceKeyRepo ? await serviceKeyRepo.generate(tenant, input.name) : undefined;
 
       const env: Record<string, string> = {
-        PORT: String(config.PAPERCLIP_CONTAINER_PORT),
+        PORT: String(containerPort),
         HOST: "0.0.0.0",
         NODE_ENV: "production",
         HOME: "/data",
-        WOPR_PROVISION_SECRET: config.PROVISION_SECRET,
+        WOPR_PROVISION_SECRET: provisionSecret,
         BETTER_AUTH_SECRET: randomBytes(32).toString("hex"),
         PAPERCLIP_HOME: "/data",
         PAPERCLIP_HOSTED_MODE: "true",
@@ -272,7 +281,7 @@ export const fleetRouter = router({
         tenantId: tenant,
         name: input.name,
         description: input.description ?? `Paperclip instance: ${input.name}`,
-        image: input.image ?? config.PAPERCLIP_IMAGE,
+        image: input.image ?? containerImage,
         env,
         volumeName,
         restartPolicy: "unless-stopped",
@@ -303,21 +312,20 @@ export const fleetRouter = router({
       await inst.start();
 
       // Connect container to the compose network so it's DNS-reachable
-      if (config.FLEET_DOCKER_NETWORK) {
+      if (fleetDockerNetwork) {
         try {
           const docker = getDocker();
-          const network = docker.getNetwork(config.FLEET_DOCKER_NETWORK);
+          const network = docker.getNetwork(fleetDockerNetwork);
           await network.connect({ Container: containerName });
-          logger.info(`Connected ${containerName} to network ${config.FLEET_DOCKER_NETWORK}`);
+          logger.info(`Connected ${containerName} to network ${fleetDockerNetwork}`);
         } catch (err) {
-          logger.warn(`Failed to connect ${containerName} to network ${config.FLEET_DOCKER_NETWORK}`, { err });
+          logger.warn(`Failed to connect ${containerName} to network ${fleetDockerNetwork}`, { err });
         }
       }
 
       // Track container → node assignment
       registry.assignContainer(profile.id, targetNode.config.id);
       const upstreamHost = registry.resolveUpstreamHost(profile.id, containerName);
-      const containerPort = config.PAPERCLIP_CONTAINER_PORT;
       await registerRoute(profile.id, input.name, upstreamHost, containerPort);
 
       // Wait for the container to become healthy, then provision it
@@ -330,10 +338,10 @@ export const fleetRouter = router({
         const userEmail = dbEmail ?? `${input.name}@runpaperclip.com`;
         const dbNameRow = await pool.query(`SELECT name FROM "user" WHERE id = $1`, [ctx.user.id]);
         const userName = (dbNameRow.rows[0]?.name as string | undefined) ?? input.name;
-        const result = await provisionContainer(containerUrl, config.PROVISION_SECRET, {
+        const result = await provisionContainer(containerUrl, provisionSecret, {
           tenantId: tenant,
           tenantName: input.name,
-          gatewayUrl: config.GATEWAY_URL,
+          gatewayUrl: gatewayUrl,
           apiKey: gatewayKey ?? "",
           budgetCents: 0,
           adminUser: { id: ctx.user.id, email: userEmail, name: userName },

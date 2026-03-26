@@ -22,7 +22,7 @@ vi.mock("@wopr-network/platform-core/fleet/fleet-manager", () => {
   };
 });
 
-vi.mock("../log.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 

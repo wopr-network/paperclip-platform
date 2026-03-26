@@ -6,7 +6,7 @@
  * Paperclip containers.
  */
 
-import { logger } from "../log.js";
+import { logger } from "@wopr-network/platform-core/config/logger";
 
 export interface MemberProvisionResult {
   success: boolean;

@@ -6,15 +6,14 @@
  * when FleetManager creates a container and removed on teardown.
  */
 
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ProxyRoute } from "@wopr-network/platform-core/proxy/types";
-import { getProxyManager } from "../fleet/services.js";
-import { logger } from "../log.js";
+import { getProxyManager } from "../container.js";
 
 /** Push route table to Caddy. Logs but does not throw on failure. */
 async function syncToCaddy(): Promise<void> {
-  const proxy = getProxyManager();
-  if (!proxy.isRunning) return;
   try {
+    const proxy = getProxyManager();
     await proxy.reload();
   } catch (err) {
     logger.warn("Caddy sync failed", { error: (err as Error).message });
