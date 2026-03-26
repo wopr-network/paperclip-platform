@@ -95,22 +95,16 @@ describe("tenant ownership check", () => {
     globalThis.fetch = originalFetch;
   });
 
-  it("skips ownership check when orgMemberRepo is not configured", async () => {
+  it("returns 503 when orgMemberRepo is not configured", async () => {
     mockGetOrgMemberRepo.mockReturnValue(null);
-
-    // Mock fetch for the upstream proxy call
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
 
     const app = createApp();
     const res = await app.request("http://acme.runpaperclip.com/dashboard", {
       headers: { host: "acme.runpaperclip.com" },
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(503);
     expect(mockValidateTenantAccess).not.toHaveBeenCalled();
-
-    globalThis.fetch = originalFetch;
   });
 
   it("allows access when profile not found in store (new container)", async () => {

@@ -603,12 +603,8 @@ async function wireGateway(db: import("@wopr-network/platform-core/db").DrizzleD
 // ---------------------------------------------------------------------------
 
 async function wireCryptoWebhook(db: import("@wopr-network/platform-core/db").DrizzleDb, creditLedger: ILedger) {
-  const {
-    CryptoServiceClient,
-    loadCryptoConfig,
-    DrizzleCryptoChargeRepository,
-    DrizzleWebhookSeenRepository,
-  } = await import("@wopr-network/platform-core/billing");
+  const { CryptoServiceClient, loadCryptoConfig, DrizzleCryptoChargeRepository, DrizzleWebhookSeenRepository } =
+    await import("@wopr-network/platform-core/billing");
 
   const cryptoConfig = loadCryptoConfig();
   if (!cryptoConfig) {

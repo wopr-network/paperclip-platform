@@ -3,8 +3,23 @@ import { timingSafeEqual } from "node:crypto";
 import type { CryptoWebhookPayload } from "@wopr-network/platform-core/billing";
 import { handleCryptoWebhook } from "@wopr-network/platform-core/billing";
 import { Hono } from "hono";
+import { z } from "zod";
+
 import { getConfig } from "../config.js";
 import { logger } from "../log.js";
+
+const cryptoWebhookSchema = z.object({
+  chargeId: z.string().min(1),
+  chain: z.string().min(1),
+  address: z.string().min(1),
+  amountUsdCents: z.number().optional(),
+  amountReceivedCents: z.number().optional(),
+  status: z.string().min(1),
+  txHash: z.string().optional(),
+  amountReceived: z.string().optional(),
+  confirmations: z.number().optional(),
+  confirmationsRequired: z.number().optional(),
+});
 
 export const cryptoWebhookRoutes = new Hono();
 
@@ -48,8 +63,12 @@ cryptoWebhookRoutes.post("/", async (c) => {
 
   let payload: CryptoWebhookPayload;
   try {
-    payload = (await c.req.json()) as CryptoWebhookPayload;
-  } catch {
+    const raw = await c.req.json();
+    payload = cryptoWebhookSchema.parse(raw) as CryptoWebhookPayload;
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return c.json({ error: "Invalid payload", issues: err.issues }, 400);
+    }
     return c.json({ error: "Invalid JSON" }, 400);
   }
 

@@ -135,15 +135,16 @@ export const tenantProxyMiddleware: MiddlewareHandler = async (c, next) => {
 
   // Verify tenant ownership — user must belong to the org that owns this subdomain
   const orgMemberRepo = getOrgMemberRepo();
-  if (orgMemberRepo) {
-    const store = getProfileStore();
-    const profiles = await store.list();
-    const profile = profiles.find((p) => p.name === subdomain);
-    if (profile) {
-      const hasAccess = await validateTenantAccess(user.id, profile.tenantId, orgMemberRepo);
-      if (!hasAccess) {
-        return c.json({ error: "Forbidden: not a member of this tenant" }, 403);
-      }
+  if (!orgMemberRepo) {
+    return c.json({ error: "Organization service unavailable" }, 503);
+  }
+  const store = getProfileStore();
+  const profiles = await store.list();
+  const profile = profiles.find((p) => p.name === subdomain);
+  if (profile) {
+    const hasAccess = await validateTenantAccess(user.id, profile.tenantId, orgMemberRepo);
+    if (!hasAccess) {
+      return c.json({ error: "Forbidden: not a member of this tenant" }, 403);
     }
   }
 
