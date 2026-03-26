@@ -1,5 +1,11 @@
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
+import type { AuthUser } from "@wopr-network/platform-core/auth";
 import { bootPlatformServer } from "@wopr-network/platform-core/server";
+import type { TRPCContext } from "@wopr-network/platform-core/trpc";
+import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
+
 import { setContainer } from "./container.js";
+import { appRouter } from "./trpc/index.js";
 
 const platform = await bootPlatformServer({
   slug: process.env.PRODUCT_SLUG ?? "paperclip",
@@ -19,7 +25,44 @@ const platform = await bootPlatformServer({
   },
 });
 
-setContainer(platform.container);
+const { container } = platform;
+setContainer(container);
+
+// Wire product-level tRPC deps from container
+setTrpcOrgMemberRepo(container.orgMemberRepo);
+
+// tRPC context — resolves user from BetterAuth session
+async function createTRPCContext(req: Request): Promise<TRPCContext> {
+  let user: AuthUser | undefined;
+  let tenantId: string | undefined;
+  try {
+    const { getAuth } = await import("@wopr-network/platform-core/auth/better-auth");
+    const auth = getAuth();
+    const session = await auth.api.getSession({ headers: req.headers });
+    if (session?.user) {
+      const sessionUser = session.user as { id: string; role?: string };
+      const roles: string[] = [];
+      if (sessionUser.role) roles.push(sessionUser.role);
+      user = { id: sessionUser.id, roles };
+      tenantId = req.headers.get("x-tenant-id") || sessionUser.id;
+    }
+  } catch {
+    // No session — unauthenticated request
+  }
+  return { user, tenantId: tenantId ?? "" };
+}
+
+// Mount product-level tRPC router
+platform.app.all("/trpc/*", async (c) => {
+  const response = await fetchRequestHandler({
+    endpoint: "/trpc",
+    req: c.req.raw,
+    router: appRouter,
+    createContext: () => createTRPCContext(c.req.raw),
+  });
+  return response;
+});
+
 await platform.start();
 
 process.on("SIGINT", () => platform.stop().then(() => process.exit(0)));
