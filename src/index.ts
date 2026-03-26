@@ -5,7 +5,7 @@ import type { TRPCContext } from "@wopr-network/platform-core/trpc";
 import { setTrpcOrgMemberRepo } from "@wopr-network/platform-core/trpc";
 
 import { setContainer } from "./container.js";
-import { appRouter } from "./trpc/index.js";
+import { appRouter, setProductConfigRouterDeps } from "./trpc/index.js";
 
 const platform = await bootPlatformServer({
   slug: process.env.PRODUCT_SLUG ?? "paperclip",
@@ -30,6 +30,14 @@ setContainer(container);
 
 // Wire product-level tRPC deps from container
 setTrpcOrgMemberRepo(container.orgMemberRepo);
+
+// Wire product config service for admin tRPC router
+const { platformBoot } = await import("@wopr-network/platform-core/product-config");
+const { service: productConfigService } = await platformBoot({
+  slug: process.env.PRODUCT_SLUG ?? "paperclip",
+  db: container.db,
+});
+setProductConfigRouterDeps(productConfigService as never, process.env.PRODUCT_SLUG ?? "paperclip");
 
 // tRPC context — resolves user from BetterAuth session
 async function createTRPCContext(req: Request): Promise<TRPCContext> {
