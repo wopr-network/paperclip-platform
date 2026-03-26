@@ -55,9 +55,10 @@ export const appRouter = router({
   billing: billingRouter,
   fleet: fleetRouter,
   fleetUpdateConfig: createFleetUpdateConfigRouter(() => getTenantUpdateConfigRepo()),
-  notificationTemplates: createNotificationTemplateRouter(
-    () => new DrizzleNotificationTemplateRepository((_db ?? ({} as DrizzleDb)) as unknown as PgDatabase<never>),
-  ),
+  notificationTemplates: createNotificationTemplateRouter(() => {
+    if (!_db) throw new Error("tRPC db not initialized — call setTrpcDb() before using notification templates");
+    return new DrizzleNotificationTemplateRepository(_db as unknown as PgDatabase<never>);
+  }),
   org: orgRouter,
   pageContext: pageContextRouter,
   product: createProductConfigRouter(() => {
