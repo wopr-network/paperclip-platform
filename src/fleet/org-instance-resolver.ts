@@ -7,7 +7,16 @@
  */
 
 import { logger } from "@wopr-network/platform-core/config/logger";
-import { getProfileStore, getProxyManager } from "../container.js";
+import type { IProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import type { ProxyManagerInterface } from "@wopr-network/platform-core/proxy/types";
+
+let _profileStore: IProfileStore | null = null;
+let _proxyManager: ProxyManagerInterface | null = null;
+
+export function setOrgInstanceResolverDeps(profileStore: IProfileStore, proxyManager: ProxyManagerInterface): void {
+  _profileStore = profileStore;
+  _proxyManager = proxyManager;
+}
 
 export interface OrgInstance {
   instanceUrl: string;
@@ -30,7 +39,8 @@ export async function resolveOrgInstance(orgId: string): Promise<OrgInstance | n
  * An org can own multiple instances — member changes must sync to every one.
  */
 export async function resolveOrgInstances(orgId: string): Promise<OrgInstance[]> {
-  const store = getProfileStore();
+  if (!_profileStore || !_proxyManager) throw new Error("OrgInstanceResolver not initialized");
+  const store = _profileStore;
   const profiles = await store.list();
   const orgProfiles = profiles.filter((p) => p.tenantId === orgId);
   if (orgProfiles.length === 0) {
@@ -38,7 +48,7 @@ export async function resolveOrgInstances(orgId: string): Promise<OrgInstance[]>
     return [];
   }
 
-  const routes = getProxyManager().getRoutes();
+  const routes = _proxyManager.getRoutes();
   const instances: OrgInstance[] = [];
 
   for (const profile of orgProfiles) {

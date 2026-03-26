@@ -4,12 +4,40 @@
  * All endpoints require platform_admin role (via adminProcedure).
  */
 
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import type { DrizzleDb } from "@wopr-network/platform-core/db";
+import type { IProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import type { IServiceKeyRepository } from "@wopr-network/platform-core/gateway/service-key-repository";
 import { adminProcedure, router } from "@wopr-network/platform-core/trpc";
 import { eq } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
+import type { Pool } from "pg";
 import { z } from "zod";
-import { getCreditLedger, getNodeRegistry, getPool, getProfileStore, getServiceKeyRepo } from "../../container.js";
+import type { NodeRegistry } from "../../fleet/node-registry.js";
+
+// ---------------------------------------------------------------------------
+// Deps
+// ---------------------------------------------------------------------------
+
+export interface AdminRouterDeps {
+  db: DrizzleDb;
+  pool: Pool;
+  creditLedger: ILedger;
+  profileStore: IProfileStore;
+  nodeRegistry: NodeRegistry;
+  serviceKeyRepo: IServiceKeyRepository | null;
+}
+
+let _deps: AdminRouterDeps | null = null;
+
+export function setAdminRouterDeps(deps: AdminRouterDeps): void {
+  _deps = deps;
+}
+
+function deps(): AdminRouterDeps {
+  if (!_deps) throw new Error("admin router not initialized");
+  return _deps;
+}
 
 // OpenRouter model list cache
 type CachedModel = { id: string; name: string; contextLength: number; promptPrice: string; completionPrice: string };
@@ -27,17 +55,6 @@ const tenantModelSelection = pgTable("tenant_model_selection", {
 
 /** Well-known tenant ID for the global platform model setting. */
 const GLOBAL_TENANT_ID = "__platform__";
-
-let db: DrizzleDb | null = null;
-
-export function setAdminRouterDeps(deps: { db: DrizzleDb }) {
-  db = deps.db;
-}
-
-function getDb(): DrizzleDb {
-  if (!db) throw new Error("admin router not initialized");
-  return db;
-}
 
 // ---------------------------------------------------------------------------
 // Cached model resolver — called per-request by the gateway proxy.
@@ -64,9 +81,9 @@ export function resolveGatewayModel(): string | null {
 }
 
 async function refreshModelCache(): Promise<void> {
-  if (!db) return;
+  if (!_deps) return;
   try {
-    const row = await db
+    const row = await _deps.db
       .select({ defaultModel: tenantModelSelection.defaultModel })
       .from(tenantModelSelection)
       .where(eq(tenantModelSelection.tenantId, GLOBAL_TENANT_ID))
@@ -90,7 +107,7 @@ export async function warmModelCache(): Promise<void> {
 export const adminRouter = router({
   /** Get the current gateway model setting. */
   getGatewayModel: adminProcedure.query(async () => {
-    const d = getDb();
+    const d = deps().db;
     const row = await d
       .select({ defaultModel: tenantModelSelection.defaultModel, updatedAt: tenantModelSelection.updatedAt })
       .from(tenantModelSelection)
@@ -104,7 +121,7 @@ export const adminRouter = router({
 
   /** Set the gateway model. Takes effect within 5 seconds. */
   setGatewayModel: adminProcedure.input(z.object({ model: z.string().min(1).max(200) })).mutation(async ({ input }) => {
-    const d = getDb();
+    const d = deps().db;
     const now = new Date().toISOString();
     await d
       .insert(tenantModelSelection)
@@ -169,9 +186,9 @@ export const adminRouter = router({
 
   /** List ALL instances across all tenants with health status. */
   listAllInstances: adminProcedure.query(async () => {
-    const store = getProfileStore();
+    const store = deps().profileStore;
     const profiles = await store.list();
-    const registry = getNodeRegistry();
+    const registry = deps().nodeRegistry;
 
     const instances = await Promise.all(
       profiles.map(async (profile) => {
@@ -216,7 +233,7 @@ export const adminRouter = router({
   /** List all organizations with member counts and instance counts. */
   listAllOrgs: adminProcedure.query(async () => {
     // Query orgs with member counts
-    const pool = getPool();
+    const pool = deps().pool;
     const orgs = await pool.query<{
       id: string;
       name: string;
@@ -235,7 +252,7 @@ export const adminRouter = router({
     `);
 
     // Count instances per tenant from fleet profiles
-    const store = getProfileStore();
+    const store = deps().profileStore;
     const profiles = await store.list();
     const instanceCountByTenant = new Map<string, number>();
     for (const p of profiles) {
@@ -243,7 +260,7 @@ export const adminRouter = router({
     }
 
     // Get credit balances per org
-    const ledger = getCreditLedger();
+    const ledger = deps().creditLedger;
 
     const result = await Promise.all(
       orgs.rows.map(async (org) => {
@@ -277,11 +294,11 @@ export const adminRouter = router({
 
   /** Get platform billing summary: total credits, active service keys, payment method count. */
   billingOverview: adminProcedure.query(async () => {
-    const pool = getPool();
+    const pool = deps().pool;
 
     // Total credit balance across all tenants
     let totalBalanceCents = 0;
-    const ledger = getCreditLedger();
+    const ledger = deps().creditLedger;
     if (ledger) {
       try {
         const balanceResult = await pool.query<{ totalRaw: string }>(`
@@ -298,7 +315,7 @@ export const adminRouter = router({
 
     // Count active service keys (proxy for active subscriptions)
     let activeKeyCount = 0;
-    const keyRepo = getServiceKeyRepo();
+    const keyRepo = deps().serviceKeyRepo;
     if (keyRepo) {
       try {
         const keyResult = await pool.query<{ count: string }>(

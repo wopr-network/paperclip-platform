@@ -1,6 +1,11 @@
-import { TRPCError } from "@trpc/server";
+import type { IOrgMemberRepository } from "@wopr-network/platform-core/tenancy/org-member-repository";
+import { createAssertOrgAdminOrOwner } from "@wopr-network/platform-core/trpc";
 
-import { getOrgMemberRepo } from "../container.js";
+let _assertFn: ((tenantId: string, userId: string) => Promise<void>) | null = null;
+
+export function setAuthHelpersDeps(orgMemberRepo: IOrgMemberRepository): void {
+  _assertFn = createAssertOrgAdminOrOwner(orgMemberRepo);
+}
 
 /**
  * Assert the caller is an admin or owner of the tenant org.
@@ -9,15 +14,8 @@ import { getOrgMemberRepo } from "../container.js";
  */
 export async function assertOrgAdminOrOwner(tenantId: string, userId: string): Promise<void> {
   if (tenantId === userId) return;
-  const repo = getOrgMemberRepo();
-  if (!repo) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Organization service unavailable",
-    });
+  if (!_assertFn) {
+    throw new Error("Auth helpers not initialized — call setAuthHelpersDeps first");
   }
-  const member = await repo.findMember(tenantId, userId);
-  if (!member || (member.role !== "owner" && member.role !== "admin")) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Organization admin access required" });
-  }
+  return _assertFn(tenantId, userId);
 }

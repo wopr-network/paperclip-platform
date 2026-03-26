@@ -9,22 +9,46 @@
 import { randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { logger } from "@wopr-network/platform-core/config/logger";
+import type { ILedger } from "@wopr-network/platform-core/credits";
 import { getUserEmail } from "@wopr-network/platform-core/email";
+import type { IProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
+import type { IServiceKeyRepository } from "@wopr-network/platform-core/gateway/service-key-repository";
+import type { ProductConfig } from "@wopr-network/platform-core/product-config";
 import { protectedProcedure, router } from "@wopr-network/platform-core/trpc";
 import { checkHealth, provisionContainer } from "@wopr-network/provision-client";
+import type Docker from "dockerode";
+import type { Pool } from "pg";
 import { z } from "zod";
-import {
-  getCreditLedger,
-  getDocker,
-  getNodeRegistry,
-  getPlacementStrategy,
-  getPool,
-  getProductConfig,
-  getProfileStore,
-  getServiceKeyRepo,
-} from "../../container.js";
+import type { NodeRegistry } from "../../fleet/node-registry.js";
+import type { PlacementStrategy } from "../../fleet/placement.js";
 import { registerRoute, removeRoute } from "../../proxy/fleet-resolver.js";
 import { assertOrgAdminOrOwner } from "../auth-helpers.js";
+
+// ---------------------------------------------------------------------------
+// Deps
+// ---------------------------------------------------------------------------
+
+export interface FleetRouterDeps {
+  pool: Pool;
+  docker: Docker;
+  creditLedger: ILedger;
+  profileStore: IProfileStore;
+  productConfig: ProductConfig;
+  nodeRegistry: NodeRegistry;
+  placementStrategy: PlacementStrategy;
+  serviceKeyRepo: IServiceKeyRepository | null;
+}
+
+let _deps: FleetRouterDeps | null = null;
+
+export function setFleetRouterDeps(deps: FleetRouterDeps): void {
+  _deps = deps;
+}
+
+function deps(): FleetRouterDeps {
+  if (!_deps) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Fleet router not initialized" });
+  return _deps;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -32,7 +56,7 @@ import { assertOrgAdminOrOwner } from "../auth-helpers.js";
 
 /** Get the FleetManager for a given instance (resolves node). */
 function getFleetForInstance(instanceId: string) {
-  const registry = getNodeRegistry();
+  const registry = deps().nodeRegistry;
   const nodeId = registry.getContainerNode(instanceId);
   return nodeId ? registry.getFleetManager(nodeId) : registry.list()[0].fleet;
 }
@@ -50,11 +74,11 @@ export const fleetRouter = router({
   /** List all instances for the authenticated user's tenant. */
   listInstances: protectedProcedure.query(async ({ ctx }) => {
     const tenant = tenantFromCtx(ctx);
-    const store = getProfileStore();
+    const store = deps().profileStore;
     const profiles = await store.list();
     const tenantProfiles = profiles.filter((p) => p.tenantId === tenant);
 
-    const registry = getNodeRegistry();
+    const registry = deps().nodeRegistry;
     const bots = await Promise.all(
       tenantProfiles.map(async (profile) => {
         try {
@@ -88,7 +112,7 @@ export const fleetRouter = router({
   /** Get a single instance by ID. */
   getInstance: protectedProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ input, ctx }) => {
     const tenant = tenantFromCtx(ctx);
-    const store = getProfileStore();
+    const store = deps().profileStore;
     const profile = await store.get(input.id);
     if (!profile) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
@@ -125,7 +149,7 @@ export const fleetRouter = router({
     .mutation(async ({ input, ctx }) => {
       const tenant = input.orgId ?? tenantFromCtx(ctx);
       await assertOrgAdminOrOwner(tenant, ctx.user.id);
-      const pc = getProductConfig();
+      const pc = deps().productConfig;
       const maxInstances = pc.fleet?.maxInstances ?? Number(process.env.MAX_INSTANCES_PER_TENANT ?? 5);
       const containerPort = pc.fleet?.containerPort ?? Number(process.env.PAPERCLIP_CONTAINER_PORT ?? 3100);
       const containerImage =
@@ -137,7 +161,7 @@ export const fleetRouter = router({
       const fleetDockerNetwork = process.env.FLEET_DOCKER_NETWORK ?? "";
 
       // Billing gate
-      const ledger = getCreditLedger();
+      const ledger = deps().creditLedger;
       if (ledger) {
         const balance = await ledger.balance(tenant);
         if (balance.isZero() || balance.isNegative()) {
@@ -149,7 +173,7 @@ export const fleetRouter = router({
       }
 
       // Instance limit gate
-      const store = getProfileStore();
+      const store = deps().profileStore;
       const profiles = await store.list();
       const tenantInstances = profiles.filter((p) => p.tenantId === tenant);
       if (tenantInstances.length >= maxInstances) {
@@ -209,7 +233,7 @@ export const fleetRouter = router({
 
       // Generate a per-instance gateway key for metered inference billing.
       // Only when the gateway is enabled (service key repo wired at startup).
-      const serviceKeyRepo = getServiceKeyRepo();
+      const serviceKeyRepo = deps().serviceKeyRepo;
       const gatewayKey = serviceKeyRepo ? await serviceKeyRepo.generate(tenant, input.name) : undefined;
 
       const env: Record<string, string> = {
@@ -234,8 +258,8 @@ export const fleetRouter = router({
       if (input.plugins?.length) env.WOPR_PLUGINS = input.plugins.join(",");
 
       // Select target node
-      const registry = getNodeRegistry();
-      const strategy = getPlacementStrategy();
+      const registry = deps().nodeRegistry;
+      const strategy = deps().placementStrategy;
       const nodes = registry.list();
       const containerCounts = registry.getContainerCounts();
       const targetNode = strategy.selectNode(nodes, containerCounts);
@@ -246,7 +270,7 @@ export const fleetRouter = router({
       // Remove any stale container with the same name (e.g. from a previous
       // failed creation). Docker returns 409 Conflict if the name is taken.
       try {
-        const docker = getDocker();
+        const docker = deps().docker;
         const stale = docker.getContainer(containerName);
         const info = await stale.inspect();
         logger.info(`Removing stale container ${containerName} (state: ${info.State?.Status})`);
@@ -262,7 +286,7 @@ export const fleetRouter = router({
 
       // Also clean up stale fleet profile YAML if one exists from a prior attempt
       try {
-        const store = getProfileStore();
+        const store = deps().profileStore;
         const profiles = await store.list();
         const existing = profiles.find((p: { name: string }) => `wopr-${p.name.replace(/_/g, "-")}` === containerName);
         if (existing) {
@@ -294,7 +318,7 @@ export const fleetRouter = router({
       // non-root container can write to it (embedded PG, logs, etc.)
       // Uses alpine (small, usually cached) and cleans up after itself.
       try {
-        const docker = getDocker();
+        const docker = deps().docker;
         const init = await docker.createContainer({
           Image: "alpine:latest",
           Cmd: ["chown", "-R", "1000:1000", "/data"],
@@ -314,7 +338,7 @@ export const fleetRouter = router({
       // Connect container to the compose network so it's DNS-reachable
       if (fleetDockerNetwork) {
         try {
-          const docker = getDocker();
+          const docker = deps().docker;
           const network = docker.getNetwork(fleetDockerNetwork);
           await network.connect({ Container: containerName });
           logger.info(`Connected ${containerName} to network ${fleetDockerNetwork}`);
@@ -333,7 +357,7 @@ export const fleetRouter = router({
 
       // Helper: provision the container once healthy
       const doProvision = async () => {
-        const pool = getPool();
+        const pool = deps().pool;
         const dbEmail = await getUserEmail(pool, ctx.user.id);
         const userEmail = dbEmail ?? `${input.name}@runpaperclip.com`;
         const dbNameRow = await pool.query(`SELECT name FROM "user" WHERE id = $1`, [ctx.user.id]);
@@ -416,7 +440,7 @@ export const fleetRouter = router({
     .mutation(async ({ input, ctx }) => {
       const tenant = input.orgId ?? tenantFromCtx(ctx);
       await assertOrgAdminOrOwner(tenant, ctx.user.id);
-      const store = getProfileStore();
+      const store = deps().profileStore;
       const profile = await store.get(input.id);
       if (!profile) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
@@ -426,7 +450,7 @@ export const fleetRouter = router({
       }
 
       const fleet = getFleetForInstance(input.id);
-      const registry = getNodeRegistry();
+      const registry = deps().nodeRegistry;
 
       switch (input.action) {
         case "start": {
@@ -446,7 +470,7 @@ export const fleetRouter = router({
           break;
         }
         case "destroy": {
-          const keyRepo = getServiceKeyRepo();
+          const keyRepo = deps().serviceKeyRepo;
           if (keyRepo) await keyRepo.revokeByInstance(input.id);
           try {
             await fleet.remove(input.id);
@@ -465,7 +489,7 @@ export const fleetRouter = router({
   /** Get health status for an instance. */
   getInstanceHealth: protectedProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ input, ctx }) => {
     const tenant = tenantFromCtx(ctx);
-    const store = getProfileStore();
+    const store = deps().profileStore;
     const profile = await store.get(input.id);
     if (!profile) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
@@ -491,7 +515,7 @@ export const fleetRouter = router({
     .input(z.object({ id: z.string().min(1), tail: z.number().int().positive().max(1000).optional() }))
     .query(async ({ input, ctx }) => {
       const tenant = tenantFromCtx(ctx);
-      const store = getProfileStore();
+      const store = deps().profileStore;
       const profile = await store.get(input.id);
       if (!profile) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
@@ -510,7 +534,7 @@ export const fleetRouter = router({
   /** Get resource metrics for an instance. */
   getInstanceMetrics: protectedProcedure.input(z.object({ id: z.string().min(1) })).query(async ({ input, ctx }) => {
     const tenant = tenantFromCtx(ctx);
-    const store = getProfileStore();
+    const store = deps().profileStore;
     const profile = await store.get(input.id);
     if (!profile) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
@@ -531,7 +555,7 @@ export const fleetRouter = router({
   /** Extract changelog from an instance's Docker image. */
   getChangelog: protectedProcedure.input(z.object({ instanceId: z.string().min(1) })).query(async ({ input, ctx }) => {
     const tenant = tenantFromCtx(ctx);
-    const store = getProfileStore();
+    const store = deps().profileStore;
     const profile = await store.get(input.instanceId);
     if (!profile) {
       throw new TRPCError({ code: "NOT_FOUND", message: "Instance not found" });
@@ -541,7 +565,7 @@ export const fleetRouter = router({
     }
 
     try {
-      const docker = getDocker();
+      const docker = deps().docker;
       const container = await docker.createContainer({
         Image: profile.image,
         Cmd: ["cat", "/app/changelogs/latest.json"],
