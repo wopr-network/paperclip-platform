@@ -20,7 +20,9 @@ import {
 // package.json exports entry.
 type ProductConfigService = Parameters<typeof createProductConfigRouter>[0] extends () => infer S ? S : never;
 
-import { getNotificationTemplateRepo } from "../services/notification-template-repo.js";
+import { DrizzleNotificationTemplateRepository } from "@wopr-network/platform-core/email";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import { getDb } from "../container.js";
 import { adminRouter } from "./routers/admin.js";
 import { billingRouter } from "./routers/billing.js";
 import { fleetRouter } from "./routers/fleet.js";
@@ -47,7 +49,9 @@ export const appRouter = router({
   billing: billingRouter,
   fleet: fleetRouter,
   fleetUpdateConfig: createFleetUpdateConfigRouter(() => getTenantUpdateConfigRepo()),
-  notificationTemplates: createNotificationTemplateRouter(() => getNotificationTemplateRepo()),
+  notificationTemplates: createNotificationTemplateRouter(
+    () => new DrizzleNotificationTemplateRepository(getDb() as unknown as PgDatabase<never>),
+  ),
   org: orgRouter,
   pageContext: pageContextRouter,
   product: createProductConfigRouter(() => {

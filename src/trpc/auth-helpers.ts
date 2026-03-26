@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 
-import { getOrgMemberRepo } from "../fleet/services.js";
+import { getOrgMemberRepo } from "../container.js";
 
 /**
  * Assert the caller is an admin or owner of the tenant org.

@@ -304,9 +304,9 @@ export const billingRouter = router({
       if (!cryptoClient) {
         throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "Crypto payments not configured" });
       }
-      const { getConfig } = await import("../../config.js");
-      const config = getConfig();
-      const callbackUrl = `https://api.${config.PLATFORM_DOMAIN}/api/webhooks/crypto`;
+      const { getProductConfig } = await import("../../container.js");
+      const pc = getProductConfig();
+      const callbackUrl = `https://api.${pc.product.domain}/api/webhooks/crypto`;
       const result = await createUnifiedCheckout({ cryptoService: cryptoClient }, input.methodId, {
         tenant,
         amountUsd: input.amountUsd,

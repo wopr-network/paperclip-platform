@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock platform-core ProxyManager
 const mockProxyManager = {
@@ -11,23 +11,15 @@ const mockProxyManager = {
   reload: vi.fn(),
 };
 
-vi.mock("../fleet/services.js", () => ({
+vi.mock("../container.js", () => ({
   getProxyManager: () => mockProxyManager,
 }));
 
-vi.mock("../log.js", () => ({
+vi.mock("@wopr-network/platform-core/config/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-// Stub env before importing modules that read config
-vi.stubEnv("PROVISION_SECRET", "test-secret");
-vi.stubEnv("GATEWAY_URL", "https://gateway.test/v1");
-
 import { getRoutes, registerRoute, removeRoute, resolveContainerUrl, setRouteHealth } from "../proxy/fleet-resolver.js";
-
-afterAll(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("fleet-resolver (ProxyManager-backed)", () => {
   beforeEach(() => {

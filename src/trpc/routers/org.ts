@@ -6,6 +6,7 @@
 
 import { TRPCError } from "@trpc/server";
 import type { IPaymentProcessor } from "@wopr-network/platform-core/billing";
+import { logger } from "@wopr-network/platform-core/config/logger";
 import type { ILedger } from "@wopr-network/platform-core/credits";
 import { Credit } from "@wopr-network/platform-core/credits";
 import type { IAuthUserRepository } from "@wopr-network/platform-core/db/auth-user-repository";
@@ -17,7 +18,6 @@ import { orgMemberProcedure, protectedProcedure, router } from "@wopr-network/pl
 import { z } from "zod";
 import { MemberProvisionClient } from "../../fleet/member-provision-client.js";
 import { resolveOrgInstances } from "../../fleet/org-instance-resolver.js";
-import { logger } from "../../log.js";
 
 // ---------------------------------------------------------------------------
 // Deps

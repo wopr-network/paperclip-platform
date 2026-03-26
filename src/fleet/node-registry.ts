@@ -8,10 +8,10 @@
  * Single-node deployments use a single "local" node (backwards compatible).
  */
 
+import { logger } from "@wopr-network/platform-core/config/logger";
 import { FleetManager } from "@wopr-network/platform-core/fleet/fleet-manager";
 import type { IProfileStore } from "@wopr-network/platform-core/fleet/profile-store";
 import Docker from "dockerode";
-import { logger } from "../log.js";
 
 export interface NodeConfig {
   /** Unique node identifier. */
