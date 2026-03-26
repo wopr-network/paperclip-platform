@@ -19,6 +19,8 @@ let _placementStrategy: PlacementStrategy | null = null;
 /** Called once from index.ts after bootPlatformServer() returns. */
 export function setContainer(c: PlatformContainer): void {
   _container = c;
+  _nodeRegistry = null;
+  _placementStrategy = null;
 }
 
 export function getContainer(): PlatformContainer {
